@@ -109,9 +109,9 @@ function Login({ done }) {
             </>
           )}
 
-          {err && <p className="err" role="alert">{err}</p>}
+          {err && <p className="err" role="alert" style={{ marginTop: '12px' }}>{err}</p>}
 
-          <button className="btn" type="submit" disabled={loading}>
+          <button className="btn" type="submit" style={{ marginTop: '16px' }} disabled={loading}>
             {loading ? 'Please wait...' : sent ? 'Sign in' : 'Send code'}
           </button>
 

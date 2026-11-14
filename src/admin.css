@@ -9,6 +9,7 @@
 .grow{flex:1;min-width:0}.who{font-size:14px;color:#6a7178;display:none}
 .adm .tabs{overflow-x:auto;padding-top:0;padding-bottom:0;gap:4px}.adm .tabs button{background:none;border:0;border-radius:0;color:#5c6470;white-space:nowrap;padding:12px 14px}.adm .tabs button.on{color:#111;box-shadow:inset 0 -3px 0 var(--g)}
 .abody{max-width:1100px;margin:0 auto;padding:16px 16px 64px}.abody.narrow{max-width:440px;padding-top:40px}
+.abody.narrow form .btn{margin-top:16px}
 .panel{background:#fff;border:1px solid #e6e8eb;border-radius:16px;padding:16px;margin:12px 0}
 .adm label{display:block;margin:14px 0 6px;font-weight:500;color:#222}.adm .ck{display:flex;align-items:center;gap:8px;font-weight:400;margin:6px 0}
 .adm input:not([type=checkbox]),.adm select,.adm textarea{display:block;width:100%;min-height:44px;padding:10px 12px;border:1px solid #cfd3d8;border-radius:12px;background:#fff;font:inherit;color:#222}
