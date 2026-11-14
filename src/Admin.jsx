@@ -388,9 +388,9 @@ function Bursaries({ B, apps, bump }) {
         <label htmlFor="ct">Contact email</label>
         <input id="ct" type="email" value={f.contact} onChange={e => set('contact', e.target.value)} />
 
-        {err && <p className="err" role="alert">{err}</p>}
+        {err && <p className="err" role="alert" style={{ marginTop: '12px' }}>{err}</p>}
 
-        <div className="acts">
+        <div className="acts" style={{ marginTop: '20px' }}>
           <button className="btn" type="submit" disabled={saving}>
             {saving ? 'Saving...' : 'Save bursary'}
           </button>
@@ -515,7 +515,7 @@ function Applications({ apps, bump }) {
               <label htmlFor="mg">Committee Note / Notification to Student (optional)</label>
               <textarea id="mg" rows="3" value={msg} onChange={e => setMsg(e.target.value)} />
 
-              <button className="btn" style={{ marginTop: '10px' }} onClick={apply} disabled={updating}>
+              <button className="btn" style={{ marginTop: '16px' }} onClick={apply} disabled={updating}>
                 {updating ? 'Saving decision...' : 'Save Decision'}
               </button>
             </div>

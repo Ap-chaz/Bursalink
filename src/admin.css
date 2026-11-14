@@ -90,7 +90,8 @@
 .adm .rw small,.adm .rw b{display:block}
 .adm small{color:#6a7178;font-size:13px}
 .adm .lnk{width:100%;background:none;border:0;border-top:1px solid #e6e8eb;border-radius:0;text-align:left;padding:12px 0;color:inherit}
-.acts{display:flex;flex-wrap:wrap;gap:8px}
+.acts{display:flex;flex-wrap:wrap;gap:10px}
+.adm form .acts{margin-top:20px}
 .bar2{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
 .bar2 h2{margin:16px 0 8px}
 .bdg{display:inline-block;background:#e8f6ee;color:var(--gd);border-radius:999px;padding:2px 12px;font-size:13px;font-weight:500;text-transform:capitalize}
