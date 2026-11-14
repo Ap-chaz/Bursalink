@@ -1,0 +1,368 @@
+import pool from '../config/db.js';
+import { logAudit } from '../services/auditService.js';
+
+const DECIDED = ['approved', 'unsuccessful', 'withdrawn'];
+
+function iso(date = new Date()) {
+  return new Date(date).toISOString().slice(0, 10);
+}
+
+function placeOk(bursaryPlace, userArea) {
+  if (!bursaryPlace) return true;
+  if (!userArea) return false;
+  return userArea[bursaryPlace.type] === bursaryPlace.name;
+}
+
+export async function getApplications(req, res, next) {
+  try {
+    const userId = req.user.id;
+    const [apps] = await pool.query(
+      `SELECT a.*, b.title as bursary_title, b.org as bursary_org
+       FROM applications a
+       JOIN bursaries b ON a.bursary_id = b.id
+       WHERE a.user_id = ?
+       ORDER BY a.created_at DESC`,
+      [userId]
+    );
+
+    // Fetch history for each application
+    const appIds = apps.map(a => a.id);
+    let historyMap = {};
+
+    if (appIds.length > 0) {
+      const [histories] = await pool.query(
+        `SELECT * FROM application_history WHERE application_id IN (?) ORDER BY created_at ASC`,
+        [appIds]
+      );
+      histories.forEach(h => {
+        if (!historyMap[h.application_id]) historyMap[h.application_id] = [];
+        historyMap[h.application_id].push({
+          status: h.status,
+          note: h.note,
+          at: h.created_at
+        });
+      });
+    }
+
+    const result = apps.map(a => ({
+      id: a.id,
+      ref: a.ref,
+      bursaryId: a.bursary_id,
+      bursaryTitle: a.bursary_title,
+      bursaryOrg: a.bursary_org,
+      status: a.status,
+      answers: typeof a.answers === 'string' ? JSON.parse(a.answers) : a.answers,
+      createdAt: a.created_at,
+      history: historyMap[a.id] || [{ status: a.status, at: a.created_at }],
+      messages: []
+    }));
+
+    res.json(result);
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function getDrafts(req, res, next) {
+  try {
+    const userId = req.user.id;
+    const [rows] = await pool.query('SELECT bursary_id, data FROM drafts WHERE user_id = ?', [userId]);
+
+    const drafts = {};
+    rows.forEach(r => {
+      drafts[r.bursary_id] = typeof r.data === 'string' ? JSON.parse(r.data) : r.data;
+    });
+
+    res.json(drafts);
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function saveDraft(req, res, next) {
+  try {
+    const userId = req.user.id;
+    const { bursaryId, data } = req.body;
+
+    if (!bursaryId) {
+      return res.status(400).json({ error: 'bursaryId is required' });
+    }
+
+    await pool.query(
+      `INSERT INTO drafts (user_id, bursary_id, data)
+       VALUES (?, ?, ?)
+       ON DUPLICATE KEY UPDATE data = VALUES(data), updated_at = CURRENT_TIMESTAMP`,
+      [userId, bursaryId, JSON.stringify(data || {})]
+    );
+
+    res.json({ success: true, message: 'Draft saved' });
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function submitApplication(req, res, next) {
+  try {
+    const userId = req.user.id;
+    const { bursaryId, answers } = req.body;
+
+    if (!bursaryId) {
+      return res.status(400).json({ error: 'bursaryId is required' });
+    }
+
+    // 1. Check bursary existence and deadline
+    const [bursaries] = await pool.query('SELECT * FROM bursaries WHERE id = ?', [bursaryId]);
+    if (bursaries.length === 0) {
+      return res.status(404).json({ error: 'Bursary not found' });
+    }
+    const b = bursaries[0];
+    const place = typeof b.place === 'string' ? JSON.parse(b.place) : b.place;
+    const today = iso();
+    const opensStr = iso(b.opens);
+    const closesStr = iso(b.closes);
+
+    if (b.status !== 'published' || today < opensStr || today > closesStr) {
+      return res.status(400).json({ error: 'This bursary is currently closed for applications.' });
+    }
+
+    // 2. Check student's profile & area eligibility
+    const [profiles] = await pool.query('SELECT area FROM profiles WHERE user_id = ?', [userId]);
+    const userArea = profiles.length > 0 && profiles[0].area
+      ? (typeof profiles[0].area === 'string' ? JSON.parse(profiles[0].area) : profiles[0].area)
+      : null;
+
+    if (!placeOk(place, userArea)) {
+      return res.status(400).json({ error: 'You are not eligible for this bursary based on your registered area.' });
+    }
+
+    // 3. Check duplicate application
+    const [existing] = await pool.query(
+      'SELECT id FROM applications WHERE user_id = ? AND bursary_id = ?',
+      [userId, bursaryId]
+    );
+    if (existing.length > 0) {
+      return res.status(400).json({ error: 'You have already applied for this bursary.' });
+    }
+
+    // 4. Generate unique application ref code with atomic collision retry
+    const currentYear = new Date().getFullYear();
+    let ref;
+
+    while (true) {
+      try {
+        const [rows] = await pool.query(
+          "SELECT MAX(CAST(SUBSTRING_INDEX(ref, '-', -1) AS UNSIGNED)) as maxSeq FROM applications WHERE ref LIKE ?",
+          [`BL-${currentYear}-%`]
+        );
+        let seq = (rows[0]?.maxSeq || 0) + 1;
+        ref = `BL-${currentYear}-${String(seq).padStart(6, '0')}`;
+
+        // 5. Insert application
+        await pool.query(
+          `INSERT INTO applications (id, ref, user_id, bursary_id, answers, status)
+           VALUES (?, ?, ?, ?, ?, 'submitted')`,
+          [ref, ref, userId, bursaryId, JSON.stringify(answers || {})]
+        );
+        break; // Successfully inserted!
+      } catch (insertErr) {
+        if (insertErr.code === 'ER_DUP_ENTRY') {
+          continue; // Retry with next available sequence
+        }
+        throw insertErr;
+      }
+    }
+
+    // 6. Record history
+    await pool.query(
+      `INSERT INTO application_history (application_id, status, note)
+       VALUES (?, 'submitted', 'Application submitted by student')`,
+      [ref]
+    );
+
+    // 7. Delete draft
+    await pool.query('DELETE FROM drafts WHERE user_id = ? AND bursary_id = ?', [userId, bursaryId]);
+
+    // 8. Create notification
+    const notifId = 'notif_' + Date.now();
+    await pool.query(
+      `INSERT INTO notifications (id, user_id, text, go)
+       VALUES (?, ?, ?, ?)`,
+      [notifId, userId, `Application ${ref} submitted`, JSON.stringify({ view: 'app', id: ref })]
+    );
+
+    // 9. Audit log
+    await logAudit('APPLICATION_SUBMITTED', {
+      userId,
+      details: { ref, bursaryId },
+      req
+    });
+
+    res.status(201).json({
+      success: true,
+      ref,
+      id: ref,
+      message: `Application ${ref} submitted successfully`
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function withdrawApplication(req, res, next) {
+  try {
+    const userId = req.user.id;
+    const { ref } = req.params;
+
+    const [apps] = await pool.query(
+      'SELECT * FROM applications WHERE ref = ? AND user_id = ?',
+      [ref, userId]
+    );
+
+    if (apps.length === 0) {
+      return res.status(404).json({ error: 'Application not found' });
+    }
+
+    const app = apps[0];
+    if (DECIDED.includes(app.status)) {
+      return res.status(400).json({ error: 'Cannot withdraw an application that has already been decided.' });
+    }
+
+    await pool.query("UPDATE applications SET status = 'withdrawn' WHERE id = ?", [app.id]);
+    await pool.query(
+      "INSERT INTO application_history (application_id, status, note) VALUES (?, 'withdrawn', 'Application withdrawn by applicant')",
+      [app.id]
+    );
+
+    await logAudit('APPLICATION_WITHDRAWN', {
+      userId,
+      details: { ref },
+      req
+    });
+
+    res.json({ success: true, message: `Application ${ref} withdrawn` });
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function trackApplicationPublic(req, res, next) {
+  try {
+    const { ref } = req.params;
+    const cleanRef = ref?.trim().toUpperCase();
+
+    if (!cleanRef || !/^BL-\d{4}-\d{6}$/.test(cleanRef)) {
+      return res.status(400).json({ error: 'Please enter a valid reference number format (e.g. BL-2026-000001)' });
+    }
+
+    const [rows] = await pool.query(
+      `SELECT a.id, a.ref, a.status, a.created_at, a.updated_at,
+              b.title as bursary_title, b.org as bursary_org
+       FROM applications a
+       JOIN bursaries b ON a.bursary_id = b.id
+       WHERE a.ref = ?`,
+      [cleanRef]
+    );
+
+    if (rows.length === 0) {
+      return res.status(404).json({ error: `No application found with reference ${cleanRef}` });
+    }
+
+    const app = rows[0];
+
+    const [historyRows] = await pool.query(
+      'SELECT status, note, created_at FROM application_history WHERE application_id = ? ORDER BY created_at ASC',
+      [app.id]
+    );
+
+    const STATUS_LABELS = {
+      submitted: '● Submitted',
+      under_review: '◐ Under review',
+      more_info_needed: '⚠ More information needed',
+      shortlisted: '★ Shortlisted',
+      approved: '✔ Approved',
+      unsuccessful: '○ Unsuccessful',
+      withdrawn: '– Withdrawn'
+    };
+
+    res.json({
+      found: true,
+      ref: app.ref,
+      bursaryTitle: app.bursary_title,
+      bursaryOrg: app.bursary_org,
+      status: app.status,
+      statusLabel: STATUS_LABELS[app.status] || app.status,
+      submittedAt: app.created_at,
+      updatedAt: app.updated_at,
+      history: historyRows.map(h => ({
+        status: h.status,
+        statusLabel: STATUS_LABELS[h.status] || h.status,
+        note: h.note,
+        at: h.created_at
+      }))
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function adminListApplications(req, res, next) {
+  try {
+    const [rows] = await pool.query(`
+      SELECT a.*, u.email as applicant_email, b.title as bursary_title, b.org as bursary_org
+      FROM applications a
+      JOIN users u ON a.user_id = u.id
+      JOIN bursaries b ON a.bursary_id = b.id
+      ORDER BY a.created_at DESC
+    `);
+
+    const apps = rows.map(r => ({
+      ...r,
+      answers: typeof r.answers === 'string' ? JSON.parse(r.answers) : r.answers
+    }));
+
+    res.json(apps);
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function adminUpdateStatus(req, res, next) {
+  try {
+    const { id } = req.params;
+    const { status, note } = req.body;
+
+    const allowedStatuses = ['submitted', 'under_review', 'more_info_needed', 'shortlisted', 'approved', 'unsuccessful', 'withdrawn'];
+    if (!allowedStatuses.includes(status)) {
+      return res.status(400).json({ error: `Invalid status. Allowed: ${allowedStatuses.join(', ')}` });
+    }
+
+    const [apps] = await pool.query('SELECT * FROM applications WHERE id = ?', [id]);
+    if (apps.length === 0) {
+      return res.status(404).json({ error: 'Application not found' });
+    }
+
+    const app = apps[0];
+    await pool.query('UPDATE applications SET status = ? WHERE id = ?', [status, id]);
+    await pool.query(
+      'INSERT INTO application_history (application_id, status, note) VALUES (?, ?, ?)',
+      [id, status, note || `Status updated to ${status}`]
+    );
+
+    // Notify user
+    const notifId = 'notif_' + Date.now();
+    await pool.query(
+      'INSERT INTO notifications (id, user_id, text, go) VALUES (?, ?, ?, ?)',
+      [notifId, app.user_id, `Application ${app.ref} status changed to ${status}`, JSON.stringify({ view: 'app', id: app.ref })]
+    );
+
+    await logAudit('APPLICATION_STATUS_UPDATED', {
+      userId: req.user.id,
+      details: { ref: app.ref, oldStatus: app.status, newStatus: status, note },
+      req
+    });
+
+    res.json({ success: true, message: `Application status updated to ${status}` });
+  } catch (err) {
+    next(err);
+  }
+}

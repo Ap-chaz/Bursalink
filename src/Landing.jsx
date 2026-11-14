@@ -1,6 +1,8 @@
-import {useMemo,useState} from 'react'
+// Public Landing page modelled on eCitizen, with quick shortcuts & live application tracking.
+import {useState,useMemo} from 'react'
 import './landing.css'
 import {Header,Footer} from './Shell.jsx'
+import * as api from './lib/api.js'
 
 // Simple stroke icons (24x24) so the page needs no icon library.
 const P={
@@ -24,11 +26,13 @@ const Ic=({n,s=32})=><svg className="ic" width={s} height={s} viewBox="0 0 24 24
 
 export default function Landing({lang,toggle,start}){
  const x=(a,b)=>lang==='sw'?b:a
- const [q,setQ]=useState(''),[menu,setMenu]=useState(false)
+ const [q,setQ]=useState('')
+ const [trackingOpen,setTrackingOpen]=useState(false)
+ const [trackRef,setTrackRef]=useState('')
+ const [trackData,setTrackData]=useState(null)
+ const [trackErr,setTrackErr]=useState('')
+ const [trackLoading,setTrackLoading]=useState(false)
 
- const nav=[['#top',x('Home','Nyumbani')],['#providers',x('National','Kitaifa')],['#providers',x('Counties','Kaunti')],['#help',x('Help & Support','Msaada')]]
-
- // The eight quick shortcuts under the search bar (like eCitizen's service row).
  const quick=[
   ['school',x('Secondary school bursaries','Bursari za sekondari')],
   ['uni',x('University & college funding','Ufadhili wa chuo')],
@@ -51,12 +55,12 @@ export default function Landing({lang,toggle,start}){
   [x('Foundations','Wakfu'),x('Scholarships open to all Kenyan students or focused on one place or level.','Ufadhili kwa wanafunzi wote wa Kenya au unaolenga eneo au kiwango kimoja.'),'hand'],
   [x('Corporate programmes','Programu za makampuni'),x('Company grants for university and college students with clear closing dates.','Ruzuku za makampuni kwa wanafunzi wa chuo, zenye tarehe wazi za kufunga.'),'uni'],
   [x('NGOs and community groups','NGO na vikundi vya jamii'),x('Support for learners from families that need it most, in your own community.','Msaada kwa wanafunzi kutoka familia zinazohitaji zaidi, katika jamii yako.'),'people']]
+
  const shown=useMemo(()=>providers.filter(p=>(p[0]+p[1]).toLowerCase().includes(q.trim().toLowerCase())),[q,lang])
 
- // Dusk campus skyline drawn in SVG, standing in for the harbour photo in the reference.
  const hero=<svg className="herobg" viewBox="0 0 1600 640" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
   <defs><linearGradient id="sky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#2c4a7a"/><stop offset=".55" stopColor="#7d8fb4"/><stop offset="1" stopColor="#e9a46e"/></linearGradient>
-  <linearGradient id="gr" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#1a3a3a"/><stop offset="1" stopColor="#0c1f24"/></linearGradient></defs>
+  <linearGradient id="gr" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#1a3a3a"/><stop offset=".55" stopColor="#0c1f24"/></linearGradient></defs>
   <rect width="1600" height="640" fill="url(#sky)"/>
   <g fill="#34507a" opacity=".55"><rect x="60" y="330" width="90" height="180"/><rect x="170" y="290" width="70" height="220"/><rect x="1250" y="300" width="100" height="210"/><rect x="1370" y="350" width="80" height="160"/><rect x="1470" y="310" width="90" height="200"/></g>
   <g fill="#10272e">
@@ -66,7 +70,30 @@ export default function Landing({lang,toggle,start}){
   <g fill="#ffd98a" opacity=".9">{[[600,400],[640,400],[720,400],[760,400],[600,450],[640,450],[720,450],[760,450],[460,440],[500,440],[830,440],[880,440],[920,440]].map(([a,b],i)=><rect key={i} x={a} y={b} width="14" height="20" rx="2"/>)}</g>
  </svg>
 
- const go=e=>{e.preventDefault();start()}
+ const onQuickClick=(iconKey)=>{
+  if(iconKey==='doc'){
+   setTrackingOpen(true)
+   setTrackErr('')
+  } else {
+   start()
+  }
+ }
+
+ const submitTrack=async(e)=>{
+  e.preventDefault()
+  if(!trackRef.trim())return
+  setTrackLoading(true)
+  setTrackErr('')
+  setTrackData(null)
+  try{
+   const res=await api.trackApplication(trackRef.trim())
+   setTrackData(res)
+  }catch(err){
+   setTrackErr(err.message||'No application found matching this reference.')
+  }finally{
+   setTrackLoading(false)
+  }
+ }
 
  return <div className="lp" id="top">
   <Header {...{lang,toggle,start}} route="/"/>
@@ -75,10 +102,104 @@ export default function Landing({lang,toggle,start}){
    <div className="heroin">
     <h1>{x('Kenya bursaries simplified','Bursari za Kenya zimerahisishwa')}<br/>{x('All your applications unified','Maombi yako yote mahali pamoja')}</h1>
     <div className="panel" id="search">
-     <form className="searchbar" role="search" onSubmit={go}><Ic n="search" s={22}/>
+     <form className="searchbar" role="search" onSubmit={e=>{e.preventDefault();start()}}><Ic n="search" s={22}/>
       <input value={q} onChange={e=>setQ(e.target.value)} aria-label={x('Search bursaries','Tafuta bursari')} placeholder={x('Type name of bursary, provider, county, ward etc...','Andika jina la bursari, mtoaji, kaunti, wadi n.k...')}/></form>
-     <ul className="quick">{quick.map(([i,l])=><li key={l}><button onClick={start}><Ic n={i} s={34}/><span>{l}</span></button></li>)}</ul>
+     <ul className="quick">{quick.map(([i,l])=><li key={l}><button onClick={()=>onQuickClick(i)}><Ic n={i} s={34}/><span>{l}</span></button></li>)}</ul>
     </div></div></section>
+
+  {/* Live Application Tracker Modal / Overlay */}
+  {trackingOpen && (
+   <div style={{
+    position:'fixed',inset:0,background:'rgba(10,20,30,0.7)',backdropFilter:'blur(8px)',
+    zIndex:100,display:'flex',alignItems:'center',justifyContent:'center',padding:'16px'
+   }} onClick={()=>setTrackingOpen(false)}>
+    <div style={{
+     background:'#fff',borderRadius:'24px',maxWidth:'560px',width:'100%',padding:'28px',
+     boxShadow:'0 20px 40px rgba(0,0,0,0.25)',color:'#222',maxHeight:'90vh',overflowY:'auto'
+    }} onClick={e=>e.stopPropagation()}>
+     <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'16px'}}>
+      <h2 style={{fontSize:'22px',fontWeight:'600',margin:0}}>
+       {x('Track Your Application Status','Fuatilia Hali ya Ombi Lako')}
+      </h2>
+      <button style={{background:'none',border:0,fontSize:'24px',cursor:'pointer',color:'#666',lineHeight:1}} onClick={()=>setTrackingOpen(false)}>✕</button>
+     </div>
+     <p style={{color:'#666',fontSize:'14px',marginBottom:'18px'}}>
+      {x('Enter your official Bursalink reference number (e.g. BL-2026-000001) to view real-time status and review history from the government database.',
+         'Weka nambari yako ya kumbukumbu ya Bursalink (mfano BL-2026-000001) ili uone hali ya sasa na historia kutoka hifadhidata ya serikali.')}
+     </p>
+
+     <form onSubmit={submitTrack} style={{display:'flex',gap:'10px',marginBottom:'20px'}}>
+      <input
+       value={trackRef}
+       onChange={e=>setTrackRef(e.target.value.toUpperCase())}
+       placeholder="BL-2026-000001"
+       style={{
+        flex:1,padding:'12px 16px',fontSize:'16px',borderRadius:'12px',
+        border:'2px solid #ccc',fontFamily:'monospace',fontWeight:'bold'
+       }}
+      />
+      <button
+       type="submit"
+       disabled={trackLoading||!trackRef.trim()}
+       style={{
+        background:'#1fb355',color:'#fff',border:0,borderRadius:'12px',
+        padding:'12px 20px',fontSize:'15px',fontWeight:'600',cursor:'pointer'
+       }}
+      >
+       {trackLoading ? x('Searching...','Inatafuta...') : x('Check Status','Angalia Hali')}
+      </button>
+     </form>
+
+     {trackErr && (
+      <div style={{background:'#fee2e2',color:'#b91c1c',padding:'12px 16px',borderRadius:'12px',fontSize:'14px',marginBottom:'16px'}}>
+       ⚠ {trackErr}
+      </div>
+     )}
+
+     {trackData && (
+      <div style={{background:'#f8fafc',border:'1px solid #e2e8f0',borderRadius:'16px',padding:'20px'}}>
+       <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:'12px'}}>
+        <div>
+         <span style={{fontSize:'12px',color:'#64748b',fontWeight:'bold',letterSpacing:'0.05em'}}>{x('REFERENCE CODE','NAMBARI YA KUMBUKUMBU')}</span>
+         <h3 style={{fontSize:'18px',fontFamily:'monospace',margin:'4px 0 0',color:'#0f172a'}}>{trackData.ref}</h3>
+        </div>
+        <span style={{
+         background: trackData.status === 'approved' ? '#dcfce7' : trackData.status === 'under_review' ? '#fef9c3' : '#e0f2fe',
+         color: trackData.status === 'approved' ? '#15803d' : trackData.status === 'under_review' ? '#854d0e' : '#0369a1',
+         padding:'6px 14px',borderRadius:'999px',fontSize:'14px',fontWeight:'600'
+        }}>
+         {trackData.statusLabel}
+        </span>
+       </div>
+
+       <div style={{borderTop:'1px solid #e2e8f0',paddingTop:'12px',marginBottom:'14px'}}>
+        <p style={{margin:'0 0 4px',fontWeight:'600',color:'#1e293b'}}>{trackData.bursaryTitle}</p>
+        <p style={{margin:0,fontSize:'13px',color:'#64748b'}}>{trackData.bursaryOrg}</p>
+       </div>
+
+       {trackData.history && trackData.history.length > 0 && (
+        <div style={{borderTop:'1px solid #e2e8f0',paddingTop:'12px'}}>
+         <h4 style={{fontSize:'13px',color:'#475569',textTransform:'uppercase',letterSpacing:'0.05em',margin:'0 0 10px'}}>
+          {x('Status History Timeline','Msururu wa Mabadiliko ya Hali')}
+         </h4>
+         <div style={{display:'flex',flexDirection:'column',gap:'8px'}}>
+          {trackData.history.map((h, idx) => (
+           <div key={idx} style={{display:'flex',justifyContent:'space-between',fontSize:'13px',background:'#fff',padding:'8px 12px',borderRadius:'8px',border:'1px solid #f1f5f9'}}>
+            <div>
+             <b style={{color:'#1e293b'}}>{h.statusLabel}</b>
+             {h.note && <span style={{color:'#64748b',marginLeft:'6px'}}>· {h.note}</span>}
+            </div>
+            <span style={{color:'#94a3b8',fontSize:'12px'}}>{new Date(h.at).toLocaleDateString()}</span>
+           </div>
+          ))}
+         </div>
+        </div>
+       )}
+      </div>
+     )}
+    </div>
+   </div>
+  )}
 
   <section className="banner"><div className="bannerin">
    <p>{x('Over ','Zaidi ya ')}<b>{x('1,400 wards','wadi 1,400')}</b>{x(' across all ',' katika kaunti zote ')}<b>{x('47 counties','47')}</b>{x(', with bursaries from constituencies, counties, foundations and companies.','; bursari kutoka maeneobunge, kaunti, wakfu na makampuni.')}</p></div>
@@ -94,4 +215,5 @@ export default function Landing({lang,toggle,start}){
   </div></section>
 
   <Footer lang={lang}/>
- </div>}
+ </div>
+}
