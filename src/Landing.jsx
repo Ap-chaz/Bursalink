@@ -82,7 +82,7 @@ export default function Landing({lang,toggle,start}){
 
   <section className="banner"><div className="bannerin">
    <p>{x('Over ','Zaidi ya ')}<b>{x('1,400 wards','wadi 1,400')}</b>{x(' across all ',' katika kaunti zote ')}<b>{x('47 counties','47')}</b>{x(', with bursaries from constituencies, counties, foundations and companies.','; bursari kutoka maeneobunge, kaunti, wakfu na makampuni.')}</p></div>
-   <div className="bannerbar"><div className="bbin"><span>{x('Get started on BursaLink today','Anza kutumia BursaLink leo')}</span><div><button className="signin sm" onClick={start}>{x('Sign in','Ingia')}</button><button className="reg sm" onClick={start}>{x('Register','Jisajili')}</button></div></div></div>
+   <div className="bannerbar"><div className="bbin"><span>{x('Get started on BursaLink today','Anza kutumia BursaLink leo')}</span><div><button className="signin sm" onClick={()=>start('signin')}>{x('Sign in','Ingia')}</button><button className="reg sm" onClick={()=>start('register')}>{x('Register','Jisajili')}</button></div></div></div>
   </section>
 
   <section className="feats" id="help"><div className="featin">{feats.map(([i,h,t])=><div key={h}><Ic n={i} s={46}/><h3>{h}</h3><p>{t}</p></div>)}</div></section>

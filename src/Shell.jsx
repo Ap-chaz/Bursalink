@@ -9,8 +9,8 @@ export function Header({lang,toggle,start,route}){
   <nav className={'links '+(menu?'open':'')} aria-label="Main">{links(x).map(([h,l,r])=><a key={h} href={h} aria-current={route===r?'page':undefined} onClick={()=>setMenu(false)}>{l}</a>)}</nav>
   <div className="navr">
    <a className="iconbtn" href={route==='/'?'#search':'#/counties'} aria-label={x('Search','Tafuta')}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><path d="M11 19a8 8 0 1 1 0-16 8 8 0 0 1 0 16zm10 2-4.300-4.300"/></svg></a>
-   <button className="signin" onClick={start}>{x('Sign in','Ingia')}</button>
-   <button className="reg" onClick={start}>{x('Register','Jisajili')}</button>
+   <button className="signin" onClick={()=>start('signin')}>{x('Sign in','Ingia')}</button>
+   <button className="reg" onClick={()=>start('register')}>{x('Register','Jisajili')}</button>
    <button className="iconbtn lang" onClick={toggle} aria-label={lang==='en'?'Kiswahili':'English'}><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><path d="M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM3 12h18M12 3c2.500 2.500 3.500 5.500 3.500 9S14.500 18.500 12 21c-2.500-2.500-3.500-5.500-3.500-9S9.500 5.500 12 3z"/></svg><small>{lang==='en'?'SW':'EN'}</small></button>
    <button className="iconbtn burger" aria-label="Menu" aria-expanded={menu} onClick={()=>setMenu(m=>!m)}><span/><span/><span/></button>
   </div></div></header>}

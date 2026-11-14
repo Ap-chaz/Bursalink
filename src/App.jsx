@@ -10,7 +10,7 @@ const ST={submitted:'● Submitted',under_review:'◐ Under review',more_info_ne
 const money=b=>`KES ${b.min.toLocaleString()}–${b.max.toLocaleString()}`
 const where=b=>b.place?.name||'Everyone'
 export default function App(){
- const [s,setS]=useState(api.load()),[tab,setTab]=useState('home'),[view,setView]=useState(null),[intro,setIntro]=useState(0),[err,setErr]=useState('')
+ const [s,setS]=useState(api.load()),[tab,setTab]=useState('home'),[view,setView]=useState(null),[intro,setIntro]=useState(0),[mode,setMode]=useState('signin'),[err,setErr]=useState('')
  const l=s.profile.lang,t=k=>tr(l,k),B=api.listBursaries(),area=s.profile.area
  const act=async fn=>{try{setErr('');await fn();setS(api.load());return true}catch(e){setErr(e.message);return false}}
  const go=(tb,v=null)=>{setTab(tb);setView(v)}
@@ -21,7 +21,7 @@ export default function App(){
  const Card=b=><div className={'card '+(isOpen(b)&&daysLeft(b)<=3?'urgent':'')} key={b.id}><small>{b.org}</small><h3>{b.title}</h3><p>{b.desc}</p><p>{money(b)} · {where(b)} · {b.levels.join(', ')}</p><p>{isOpen(b)?`${daysLeft(b)} ${t('left')}${daysLeft(b)<=3?' ⚠':''}`:''}</p>
   <div className="row"><div onClick={()=>go('discover',{v:'bursary',id:b.id})}>{action(b)}</div><button className="secondary" onClick={()=>act(()=>api.toggleSave(b.id))}>{s.saved.includes(b.id)?'★ Saved':'☆ Save'}</button></div></div>
  // ---- Auth & onboarding
- if(!s.user)return intro<3?<Site lang={l} toggle={()=>act(()=>api.updateProfile({lang:l==='en'?'sw':'en'}))} start={()=>setIntro(3)}/>:<div className="app">{bar()}<main className="narrow"><Login act={act} err={err} t={t}/></main></div>
+ if(!s.user)return intro<3?<Site lang={l} toggle={()=>act(()=>api.updateProfile({lang:l==='en'?'sw':'en'}))} start={m=>{setMode(m==='register'?'register':'signin');setIntro(3)}}/>:<div className="app">{bar()}<main className="narrow"><Login {...{act,err,t,mode,setMode}}/></main></div>
  if(!area)return <div className="app">{bar()}<main className="narrow"><AreaForm act={act} err={err} t={t}/></main></div>
  // ---- Screens
  const unread=s.notifs.filter(n=>!n.read).length
@@ -33,13 +33,20 @@ export default function App(){
  return <div className="app">{bar(true,unread)}<main>{body}</main>
  <nav className="tabs">{['home','discover','applications','profile'].map(k=><button key={k} className={tab===k?'on':''} onClick={()=>go(k)}>{t(k)}</button>)}</nav></div>}
 function Welcome({intro,setIntro,t}){const P=['Find bursaries made for you.','Apply from your phone. It is free.','Track every step until a decision.'];return <div className="card"><h2>{P[intro]}</h2><p>{intro+1} / 3</p><button className="primary" onClick={()=>setIntro(intro+1)}>{t('cont')}</button><p/><button className="secondary" onClick={()=>setIntro(3)}>Skip</button></div>}
-function Login({act,err,t}){const [e,setE]=useState(''),[c,setC]=useState(''),[sent,setSent]=useState(false)
- const submit=async ev=>{ev.preventDefault();if(!sent)setSent(await act(()=>api.sendCode(e)));else act(()=>api.verifyCode(e,c))}
- return <form className="card auth" onSubmit={submit}><h1>Sign up or log in</h1><p className="muted">Enter your email and we send you a one-time code. No password needed.</p>
- <label htmlFor="em">Email</label><input id="em" type="email" autoComplete="email" inputMode="email" value={e} disabled={sent} onChange={x=>setE(x.target.value)}/>{err==='email'&&<p className="err">Please check your email address.</p>}
- {sent&&<><label htmlFor="cd">One-time code (demo: 123456)</label><input id="cd" autoComplete="one-time-code" inputMode="numeric" maxLength={6} autoFocus value={c} onChange={x=>setC(x.target.value)}/>{err==='code'&&<p className="err">{t('badcode')}</p>}</>}
- <button className="primary" type="submit">{sent?'Log in':'Send my code'}</button>{sent&&<button type="button" className="secondary" onClick={()=>{setSent(false);setC('')}}>Use a different email</button>}
- <p className="muted">{t('free')}</p></form>}
+function Login({act,err,t,mode,setMode}){const reg=mode==='register',[e,setE]=useState(''),[n,setN]=useState(''),[c,setC]=useState(''),[agree,setAgree]=useState(false),[sent,setSent]=useState(false)
+ const reset=m=>{setMode(m);setSent(false);setC('')}
+ const submit=async ev=>{ev.preventDefault();if(!sent){setSent(await act(()=>api.sendCode(e)));return}
+  if(await act(()=>api.verifyCode(e,c))&&reg&&n.trim())await act(()=>api.updateProfile({name:n.trim()}))}
+ return <form className="card auth" onSubmit={submit}>
+  <div className="seg" role="tablist">{[['signin','Sign in'],['register','Register']].map(([k,l])=><button key={k} type="button" role="tab" aria-selected={mode===k} className={mode===k?'on':''} onClick={()=>reset(k)}>{l}</button>)}</div>
+  <h1>{reg?'Create your account':'Welcome back'}</h1><p className="muted">{reg?'It takes a minute and it is free.':'Enter your email and we send you a one-time code. No password needed.'}</p>
+  {reg&&<><label htmlFor="nm">Full name</label><input id="nm" autoComplete="name" value={n} disabled={sent} onChange={x=>setN(x.target.value)}/></>}
+  <label htmlFor="em">Email</label><input id="em" type="email" autoComplete="email" inputMode="email" value={e} disabled={sent} onChange={x=>setE(x.target.value)}/>{err==='email'&&<p className="err">Please check your email address.</p>}
+  {sent&&<><label htmlFor="cd">One-time code (demo: 123456)</label><input id="cd" autoComplete="one-time-code" inputMode="numeric" maxLength={6} autoFocus value={c} onChange={x=>setC(x.target.value)}/>{err==='code'&&<p className="err">{t('badcode')}</p>}</>}
+  {reg&&!sent&&<label className="check"><input type="checkbox" checked={agree} onChange={x=>setAgree(x.target.checked)}/> <span>I agree to the <a href="#/terms" target="_blank" rel="noopener">Terms & Conditions</a> and <a href="#/privacy" target="_blank" rel="noopener">Privacy Policy</a>.</span></label>}
+  <button className="primary" type="submit" disabled={!sent&&reg&&(!n.trim()||!agree)}>{sent?(reg?'Create account':'Sign in'):'Send my code'}</button>
+  {sent&&<button type="button" className="secondary" onClick={()=>setSent(false)}>Use a different email</button>}
+  <p className="muted">{reg?'Already have an account?':'New to BursaLink?'} <a href="#" onClick={ev=>{ev.preventDefault();reset(reg?'signin':'register')}}>{reg?'Sign in':'Register'}</a></p><p className="muted">{t('free')}</p></form>}
 function AreaForm({act,err,t}){const [co,setCo]=useState(''),[cn,setCn]=useState(''),[w,setW]=useState(''),[ok,setOk]=useState(false)
  return <div className="card"><h2>Where do you live?</h2><label>County</label><select value={co} onChange={e=>{setCo(e.target.value);setCn('');setW('')}}><option value="">Choose</option>{Object.keys(GEO).map(x=><option key={x}>{x}</option>)}</select>
  <label>Constituency</label><select value={cn} disabled={!co} onChange={e=>{setCn(e.target.value);setW('')}}><option value="">Choose</option>{co&&Object.keys(GEO[co]).map(x=><option key={x}>{x}</option>)}</select>
