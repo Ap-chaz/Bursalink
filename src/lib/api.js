@@ -109,7 +109,8 @@ export const verifyCode = async (email, code) => {
 };
 
 export async function syncUserData() {
-  if (!getToken()) return;
+  // Session lives in the HttpOnly cookie; only skip when nobody is signed in
+  if (!load().user && !getToken()) return;
 
   try {
     const [profileData, appsData, draftsData, notifsData, savedData] = await Promise.all([

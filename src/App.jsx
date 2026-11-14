@@ -19,6 +19,24 @@ export default function App(){
   })
  },[])
 
+ // Keep notifications, application statuses and committee messages live
+ const loggedIn=!!s.user
+ useEffect(()=>{
+  if(!loggedIn)return
+  let alive=true
+  const refresh=async()=>{
+   await api.syncUserData()
+   if(alive)setS(api.load())
+  }
+  refresh()
+  const timer=setInterval(refresh,20000)
+  const onFocus=()=>refresh()
+  const onVisible=()=>{if(document.visibilityState==='visible')refresh()}
+  window.addEventListener('focus',onFocus)
+  document.addEventListener('visibilitychange',onVisible)
+  return()=>{alive=false;clearInterval(timer);window.removeEventListener('focus',onFocus);document.removeEventListener('visibilitychange',onVisible)}
+ },[loggedIn])
+
  const l=s.profile.lang,t=k=>tr(l,k),B=bursaries,area=s.profile.area
  const act=async fn=>{try{setErr('');await fn();setS(api.load());const updated=await api.syncBursaries();if(Array.isArray(updated))setBursaries([...updated]);return true}catch(e){setErr(e.message);return false}}
  const go=(tb,v=null)=>{setTab(tb);setView(v)}
