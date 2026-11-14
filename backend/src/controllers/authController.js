@@ -2,6 +2,7 @@ import crypto from 'node:crypto';
 import jwt from 'jsonwebtoken';
 import pool from '../config/db.js';
 import { logAudit } from '../services/auditService.js';
+import { sendOtpEmail } from '../services/emailService.js';
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -35,7 +36,10 @@ export async function sendCode(req, res, next) {
       req
     });
 
-    // In production, dispatch via SMTP/SMS. In development/test, log to console
+    // Dispatch verification code via Brevo email service (when configured)
+    await sendOtpEmail(cleanEmail, code);
+
+    // In development/test, also log OTP to console for convenience
     if (process.env.NODE_ENV !== 'production') {
       console.log(`[AUTH CSPRNG] OTP sent for ${cleanEmail}: ${code}`);
     }

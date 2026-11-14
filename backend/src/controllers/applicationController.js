@@ -1,5 +1,6 @@
 import pool from '../config/db.js';
 import { logAudit } from '../services/auditService.js';
+import { sendApplicationSubmittedEmail, sendStatusUpdateEmail } from '../services/emailService.js';
 
 const DECIDED = ['approved', 'unsuccessful', 'withdrawn'];
 
@@ -209,9 +210,18 @@ export async function submitApplication(req, res, next) {
     // 9. Audit log
     await logAudit('APPLICATION_SUBMITTED', {
       userId,
-      details: { ref, bursaryId },
+      details: { ref, bursaryId, bursaryTitle: b.title },
       req
     });
+
+    // 10. Send Brevo email confirmation (non-blocking)
+    if (req.user?.email) {
+      sendApplicationSubmittedEmail({
+        email: req.user.email,
+        ref,
+        bursaryTitle: b.title
+      }).catch(() => {});
+    }
 
     res.status(201).json({
       success: true,
@@ -342,7 +352,14 @@ export async function adminUpdateStatus(req, res, next) {
       return res.status(400).json({ error: `Invalid status. Allowed: ${allowedStatuses.join(', ')}` });
     }
 
-    const [apps] = await pool.query('SELECT * FROM applications WHERE id = ? OR ref = ?', [id, id]);
+    const [apps] = await pool.query(
+      `SELECT a.*, u.email as applicant_email, b.title as bursary_title
+       FROM applications a
+       JOIN users u ON a.user_id = u.id
+       JOIN bursaries b ON a.bursary_id = b.id
+       WHERE a.id = ? OR a.ref = ?`,
+      [id, id]
+    );
     if (apps.length === 0) {
       return res.status(404).json({ error: 'Application not found' });
     }
@@ -366,6 +383,17 @@ export async function adminUpdateStatus(req, res, next) {
       'INSERT INTO notifications (id, user_id, text, go) VALUES (?, ?, ?, ?)',
       [notifId, app.user_id, text, JSON.stringify({ view: 'app', id: app.ref })]
     );
+
+    // Send Brevo email notification to the applicant
+    if (app.applicant_email) {
+      sendStatusUpdateEmail({
+        email: app.applicant_email,
+        ref: app.ref,
+        bursaryTitle: app.bursary_title,
+        statusLabel: label,
+        note: cleanNote
+      }).catch(() => {});
+    }
 
     await logAudit('APPLICATION_STATUS_UPDATED', {
       userId: req.user.id,
