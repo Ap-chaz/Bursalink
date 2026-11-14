@@ -342,7 +342,7 @@ export async function adminUpdateStatus(req, res, next) {
       return res.status(400).json({ error: `Invalid status. Allowed: ${allowedStatuses.join(', ')}` });
     }
 
-    const [apps] = await pool.query('SELECT * FROM applications WHERE id = ?', [id]);
+    const [apps] = await pool.query('SELECT * FROM applications WHERE id = ? OR ref = ?', [id, id]);
     if (apps.length === 0) {
       return res.status(404).json({ error: 'Application not found' });
     }
@@ -351,10 +351,10 @@ export async function adminUpdateStatus(req, res, next) {
     const cleanNote = typeof note === 'string' ? note.trim().slice(0, 2000) : '';
     const label = status.replace(/_/g, ' ');
 
-    await pool.query('UPDATE applications SET status = ? WHERE id = ?', [status, id]);
+    await pool.query('UPDATE applications SET status = ? WHERE id = ?', [status, app.id]);
     await pool.query(
       'INSERT INTO application_history (application_id, status, note) VALUES (?, ?, ?)',
-      [id, status, cleanNote || null]
+      [app.id, status, cleanNote || null]
     );
 
     // Notify the student, including the committee's message when one was written

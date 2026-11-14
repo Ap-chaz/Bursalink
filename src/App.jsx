@@ -23,13 +23,16 @@ export default function App(){
  const loggedIn=!!s.user
  useEffect(()=>{
   if(!loggedIn)return
-  let alive=true
+  let alive=true,lastRun=0
   const refresh=async()=>{
+   const now=Date.now()
+   if(now-lastRun<8000)return
+   lastRun=now
    await api.syncUserData()
    if(alive)setS(api.load())
   }
   refresh()
-  const timer=setInterval(refresh,20000)
+  const timer=setInterval(()=>{if(document.visibilityState==='visible')refresh()},30000)
   const onFocus=()=>refresh()
   const onVisible=()=>{if(document.visibilityState==='visible')refresh()}
   window.addEventListener('focus',onFocus)
