@@ -1,4 +1,4 @@
-import {useState} from 'react'
+import { useEffect, useState } from 'react'
 import * as api from './lib/api.js'
 import {placeOk,daysLeft,isOpen,eligibility,completion,validateFile,DECIDED} from './lib/rules.js'
 import {compress} from './lib/files.js'
@@ -11,8 +11,16 @@ const money=b=>`KES ${b.min.toLocaleString()}–${b.max.toLocaleString()}`
 const where=b=>b.place?.name||'Everyone'
 export default function App(){
  const [s,setS]=useState(api.load()),[tab,setTab]=useState('home'),[view,setView]=useState(null),[intro,setIntro]=useState(0),[mode,setMode]=useState('signin'),[err,setErr]=useState('')
- const l=s.profile.lang,t=k=>tr(l,k),B=api.listBursaries(),area=s.profile.area
- const act=async fn=>{try{setErr('');await fn();setS(api.load());return true}catch(e){setErr(e.message);return false}}
+ const [bursaries,setBursaries]=useState(()=>api.listBursaries())
+
+ useEffect(()=>{
+  api.syncBursaries().then(data=>{
+   if(Array.isArray(data))setBursaries([...data])
+  })
+ },[])
+
+ const l=s.profile.lang,t=k=>tr(l,k),B=bursaries,area=s.profile.area
+ const act=async fn=>{try{setErr('');await fn();setS(api.load());const updated=await api.syncBursaries();if(Array.isArray(updated))setBursaries([...updated]);return true}catch(e){setErr(e.message);return false}}
  const go=(tb,v=null)=>{setTab(tb);setView(v)}
  const Lang=()=><button className="secondary" style={{width:'auto'}} onClick={()=>act(()=>api.updateProfile({lang:l==='en'?'sw':'en'}))}>{l==='en'?'Kiswahili':'English'}</button>
  const bar=(full,unread=0)=><header className="appbar"><div className="appbarin"><a className="brand" href="#/" onClick={e=>{e.preventDefault();if(!s.user)setIntro(0)}}><Mark/><b>BursaLink</b></a>{full&&<div className="dtabs">{['home','discover','applications','profile'].map(k=><button key={k} className={tab===k?'on':''} onClick={()=>go(k)}>{t(k)}</button>)}</div>}<div className="abr"><Lang/>{full&&<button className="secondary" aria-label={t('notifs')} onClick={()=>go('profile',{v:'notifs'})}>🔔{unread?' '+unread:''}</button>}</div></div></header>

@@ -2,7 +2,12 @@ import pool from '../config/db.js';
 
 export async function listBursaries(req, res, next) {
   try {
-    const [rows] = await pool.query('SELECT * FROM bursaries ORDER BY opens DESC');
+    const isAdmin = req.user?.role === 'admin';
+    const query = isAdmin
+      ? 'SELECT * FROM bursaries ORDER BY opens DESC'
+      : "SELECT * FROM bursaries WHERE status != 'draft' ORDER BY opens DESC";
+
+    const [rows] = await pool.query(query);
 
     // Parse JSON columns
     const bursaries = rows.map(b => ({
@@ -30,6 +35,10 @@ export async function getBursaryById(req, res, next) {
     }
 
     const b = rows[0];
+    const isAdmin = req.user?.role === 'admin';
+    if (!isAdmin && b.status === 'draft') {
+      return res.status(404).json({ error: 'Bursary not found' });
+    }
     res.json({
       ...b,
       place: typeof b.place === 'string' ? JSON.parse(b.place) : b.place,

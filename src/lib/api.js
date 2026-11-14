@@ -15,7 +15,7 @@ const blank = {
   seq: 0
 };
 
-let cachedBursaries = DEFAULT_BURSARIES;
+let cachedBursaries = DEFAULT_BURSARIES.filter(b => b.status !== 'draft');
 
 // Initialize cached state
 export const load = () => {
