@@ -43,9 +43,9 @@ label.check{display:flex;align-items:flex-start;gap:12px;font-weight:400;color:v
 .err{color:#9b1c1c;font-weight:500}
 .bar{height:10px;background:var(--line);border-radius:var(--r);overflow:hidden}.bar i{display:block;height:100%;background:var(--sea)}
 /* bottom nav */
-nav{position:fixed;bottom:0;left:50%;transform:translateX(-50%);width:100%;max-width:720px;display:grid;grid-template-columns:repeat(4,1fr);background:var(--white);border-top:1px solid var(--line);padding-bottom:env(safe-area-inset-bottom);z-index:10}
-nav button{border:0;border-radius:0;background:none;color:var(--ink);min-height:56px;padding:8px 2px;font-size:14px}
-nav button.on{color:var(--navy);font-weight:600;box-shadow:inset 0 3px 0 var(--navy)}
+.app > nav{position:fixed;bottom:0;left:50%;transform:translateX(-50%);width:100%;max-width:720px;display:grid;grid-template-columns:repeat(4,1fr);background:var(--white);border-top:1px solid var(--line);padding-bottom:env(safe-area-inset-bottom);z-index:10}
+.app > nav button{border:0;border-radius:0;background:none;color:var(--ink);min-height:56px;padding:8px 2px;font-size:14px}
+.app > nav button.on{color:var(--navy);font-weight:600;box-shadow:inset 0 3px 0 var(--navy)}
 @media(min-width:768px){main{padding-top:32px}h1{font-size:34px}.card{padding:24px}.row>*{flex-basis:180px}}
 @media(prefers-reduced-motion:reduce){*{transition:none!important}}
 /* spacing fixes */

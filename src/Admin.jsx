@@ -111,26 +111,125 @@ function Login({ done }) {
 
           {err && <p className="err" role="alert" style={{ marginTop: '12px' }}>{err}</p>}
 
-          <button className="btn" type="submit" style={{ marginTop: '16px' }} disabled={loading}>
-            {loading ? 'Please wait...' : sent ? 'Sign in' : 'Send code'}
-          </button>
-
-          {sent && (
-            <button
-              type="button"
-              className="btn2"
-              style={{ marginTop: '8px' }}
-              onClick={() => { setSent(false); setC(''); setErr(''); }}
-            >
-              Use a different email
+          <div style={{ display: 'flex', gap: '10px', alignItems: 'center', marginTop: '16px', flexWrap: 'wrap' }}>
+            <button className="btn" type="submit" disabled={loading}>
+              {loading ? 'Please wait...' : sent ? 'Sign in' : 'Send code'}
             </button>
-          )}
 
-          <p className="muted" style={{ marginTop: '16px' }}>
+            {sent && (
+              <button
+                type="button"
+                className="btn2"
+                onClick={() => { setSent(false); setC(''); setErr(''); }}
+              >
+                Use a different email
+              </button>
+            )}
+          </div>
+
+          <p className="muted" style={{ marginTop: '20px', marginBottom: '0' }}>
             <a href="#/">Back to the website</a>
           </p>
         </form>
       </div>
+    </div>
+  );
+}
+
+function formatAudit(x) {
+  let label = x.action || 'Activity';
+  let desc = '';
+  let isWarn = false;
+
+  let d = x.target;
+  if (typeof d === 'string' && (d.startsWith('{') || d.startsWith('['))) {
+    try {
+      d = JSON.parse(d);
+    } catch {
+      // keep raw string
+    }
+  }
+
+  switch (x.action) {
+    case 'USER_LOGIN_SUCCESS':
+      label = 'Staff Login';
+      desc = d?.email ? `${d.email} signed in successfully` : 'User authenticated';
+      break;
+    case 'OTP_REQUEST':
+      label = 'OTP Sent';
+      desc = d?.email ? `Verification code sent to ${d.email}` : 'Verification code requested';
+      break;
+    case 'OTP_VERIFY_FAILED':
+      label = 'Login Failed';
+      isWarn = true;
+      desc = d?.email ? `Verification failed for ${d.email}` : 'Invalid code entered';
+      break;
+    case 'USER_LOGOUT':
+      label = 'User Sign Out';
+      desc = d?.email ? `${d.email} logged out` : 'User signed out';
+      break;
+    case 'APPLICATION_SUBMITTED':
+      label = 'Application Submitted';
+      desc = d?.ref ? `Submitted ${d.ref}${d.bursaryTitle ? ` for ${d.bursaryTitle}` : ''}` : 'New application submitted';
+      break;
+    case 'APPLICATION_WITHDRAWN':
+      label = 'Application Withdrawn';
+      isWarn = true;
+      desc = d?.ref ? `Student withdrew application ${d.ref}` : 'Application withdrawn';
+      break;
+    case 'APPLICATION_STATUS_UPDATED':
+      label = 'Status Updated';
+      desc = d?.ref ? `Application ${d.ref} marked as ${lab(d.newStatus)}` : 'Status updated';
+      break;
+    case 'AREA_REGISTERED':
+      label = 'Area Locked';
+      desc = d?.area?.ward ? `Registered in ward: ${d.area.ward} (${d.area.constituency || ''})` : 'Area registered';
+      break;
+    case 'AREA_CHANGE_REQUESTED':
+      label = 'Transfer Requested';
+      desc = d?.targetArea?.ward ? `Requested transfer to ${d.targetArea.ward}` : 'Area change requested';
+      break;
+    case 'AREA_REQUEST_REVIEWED':
+      label = 'Transfer Decision';
+      desc = d?.status ? `Area transfer ${d.status}` : 'Area request reviewed';
+      break;
+    default:
+      label = x.action ? x.action.replace(/_/g, ' ') : 'Action';
+      if (typeof d === 'object' && d !== null) {
+        desc = Object.entries(d).map(([k, v]) => `${k}: ${typeof v === 'object' ? JSON.stringify(v) : v}`).join(' · ');
+      } else {
+        desc = String(d || '');
+      }
+      break;
+  }
+
+  return { label, desc, isWarn };
+}
+
+function AuditList({ items }) {
+  if (!items || !items.length) {
+    return <p className="muted">No activity recorded yet.</p>;
+  }
+
+  return (
+    <div className="audit-list">
+      {items.map((x, i) => {
+        const { label, desc, isWarn } = formatAudit(x);
+        return (
+          <div className="audit-item" key={x.id || i}>
+            <div className="audit-main">
+              <div className="audit-head">
+                <span className={`audit-badge ${isWarn ? 'warn' : ''}`}>{label}</span>
+                <span className="audit-desc">{desc}</span>
+              </div>
+              <div className="audit-meta">
+                <span>By: {x.actor}</span>
+              </div>
+            </div>
+            <span className="audit-time">{when(x.at)}</span>
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -155,16 +254,7 @@ function Overview({ B, apps, areaReqs, log }) {
       </div>
       <h2>Recent activity (Live Audit Trail)</h2>
       <div className="panel">
-        {log.length ? (
-          log.slice(0, 8).map((l, i) => (
-            <p className="rw" key={i}>
-              <span><b>{l.action}</b>: {l.target} <small style={{ display: 'inline', marginLeft: '6px', color: '#666' }}>({l.actor})</small></span>
-              <small>{when(l.at)}</small>
-            </p>
-          ))
-        ) : (
-          <p className="muted">No activity recorded yet.</p>
-        )}
+        <AuditList items={log.slice(0, 8)} />
       </div>
     </>
   );
@@ -514,19 +604,7 @@ function Audit({ log }) {
     <>
       <h2>Official Audit Log (Government Compliance)</h2>
       <div className="panel">
-        {log.length ? (
-          log.map((x, i) => (
-            <p className="rw" key={i}>
-              <span>
-                <b>{x.action}</b>: {x.target}
-                <small>{x.actor}</small>
-              </span>
-              <small>{when(x.at)}</small>
-            </p>
-          ))
-        ) : (
-          <p className="muted">Nothing recorded yet. Every status change, publishing action and area decision appears here.</p>
-        )}
+        <AuditList items={log} />
       </div>
     </>
   );
