@@ -17,8 +17,62 @@ export function Header({lang,toggle,start,route}){
 export function Footer({lang}){
  const x=(a,b)=>lang==='sw'?b:a
  return <footer><div className="fin">
-  <div className="ftop"><a className="brand light" href="#/"><Mark/><b>BursaLink</b></a>
-   <nav aria-label="Footer">{[...links(x),['#/terms',x('Terms & Conditions','Masharti'),'/terms'],['#/privacy',x('Privacy Policy','Faragha'),'/privacy']].map(([h,l])=><a key={h} href={h}>{l}</a>)}</nav></div>
-  <p className="ftag">{x('Giving Kenyan students easy access to bursaries.','Kuwapa wanafunzi wa Kenya urahisi wa kupata bursari.')}</p>
-  <p className="fcopy">© 2026 BursaLink. {x('All rights reserved. Applying is always free. This demo uses made-up sample data.','Haki zote zimehifadhiwa. Kuomba ni bure daima. Onyesho hili linatumia data ya mfano.')}</p>
+  <div className="fgrid">
+   <div className="fbrand">
+    <a className="brand light" href="#/"><Mark/><b>BursaLink</b></a>
+    <p className="ftag">{x(
+     'Kenya’s unified student bursary & scholarship portal — connecting secondary, TVET, college, and university learners to verified NG-CDF, county, foundation, and corporate funding across all 47 counties.',
+     'Jukwaa la pamoja la bursari na ufadhili wa masomo nchini Kenya — likiwaunganisha wanafunzi wa shule za upili, TVET, vyuo na vyuo vikuu na ufadhili wa NG-CDF, kaunti, wakfu na makampuni katika kaunti zote 47.'
+    )}</p>
+    <div className="fbadges">
+     <span>✔ {x('100% Free Application','Ombi Bure 100%')}</span>
+     <span>✔ {x('47 Counties Covered','Kaunti Zote 47')}</span>
+     <span>✔ {x('ODPC Data Protected','Ulinzi wa Data')}</span>
+    </div>
+   </div>
+
+   <div className="fcol">
+    <h4>{x('Bursary Programmes','Programu za Bursari')}</h4>
+    <ul>
+     <li><a href="#/national">{x('National & Foundation Funds','Mifuko ya Kitaifa na Wakfu')}</a></li>
+     <li><a href="#/counties">{x('County Government Bursaries','Bursari za Serikali za Kaunti')}</a></li>
+     <li><a href="#/counties">{x('NG-CDF Constituency Funds','Mifuko ya Maeneobunge (NG-CDF)')}</a></li>
+     <li><a href="#/national">{x('Secondary School Scholarships','Ufadhili wa Shule za Upili')}</a></li>
+     <li><a href="#/national">{x('University, College & TVET','Vyuo Vikuu, Vyuo na TVET')}</a></li>
+    </ul>
+   </div>
+
+   <div className="fcol">
+    <h4>{x('Student Portal','Tovuti ya Wanafunzi')}</h4>
+    <ul>
+     <li><a href="#/">{x('Search Open Bursaries','Tafuta Bursari zilizo Wazi')}</a></li>
+     <li><a href="#/">{x('Track Application by Ref','Fuatilia Ombi kwa Nambari')}</a></li>
+     <li><a href="#/help">{x('Required Documents Guide','Mwongozo wa Hati Zinazohitajika')}</a></li>
+     <li><a href="#/help">{x('Ward & Residency Rules','Kanuni za Wadi na Makazi')}</a></li>
+     <li><a href="#/help">{x('Frequently Asked Questions','Maswali Yanayoulizwa Mara kwa Mara')}</a></li>
+    </ul>
+   </div>
+
+   <div className="fcol">
+    <h4>{x('Contact & Governance','Mawasiliano na Utawala')}</h4>
+    <ul>
+     <li><a href="mailto:support@bursalink.go.ke">✉ support@bursalink.go.ke</a></li>
+     <li><a href="tel:+254202210000">☎ +254 (0) 20 221 0000</a></li>
+     <li><span>📍 {x('Harambee Ave, Nairobi, Kenya','Barabara ya Harambee, Nairobi')}</span></li>
+     <li><a href="#/terms">{x('Terms & Conditions','Masharti na Vigezo')}</a></li>
+     <li><a href="#/privacy">{x('Privacy Policy (Data Protection Act)','Sera ya Faragha (Sheria ya Data)')}</a></li>
+     <li><a href="#/admin">{x('Staff & Committee Portal →','Tovuti ya Wasimamizi na Kamati →')}</a></li>
+    </ul>
+   </div>
+  </div>
+
+  <div className="fbot">
+   <p className="fcopy">© 2026 BursaLink Kenya. {x('All rights reserved. Applying for any bursary on BursaLink is 100% free — never pay anyone to apply, shortlist, or approve your application.','Haki zote zimehifadhiwa. Kuomba bursari yoyote kwenye BursaLink ni bure 100% — usimlipe mtu yeyote ili kuomba au kuidhinishwa.')}</p>
+   <div className="flinks">
+    <a href="#/terms">{x('Terms','Masharti')}</a>
+    <a href="#/privacy">{x('Privacy','Faragha')}</a>
+    <a href="#/help">{x('Report Fraud','Ripoti Ulaghai')}</a>
+    <a href="#/admin">{x('Staff Sign In','Kuingia kwa Wafanyakazi')}</a>
+   </div>
+  </div>
  </div></footer>}
