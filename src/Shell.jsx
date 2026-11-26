@@ -6,7 +6,13 @@ export function Header({lang,toggle,start,route}){
  const x=(a,b)=>lang==='sw'?b:a,[menu,setMenu]=useState(false)
  return <header className="nav"><div className="navin">
   <a className="brand" href="#/" aria-label="BursaLink"><Mark/><b>BursaLink</b></a>
-  <nav className={'links '+(menu?'open':'')} aria-label="Main">{links(x).map(([h,l,r])=><a key={h} href={h} aria-current={route===r?'page':undefined} onClick={()=>setMenu(false)}>{l}</a>)}</nav>
+  <nav className={'links '+(menu?'open':'')} aria-label="Main">
+   {links(x).map(([h,l,r])=><a key={h} href={h} aria-current={route===r?'page':undefined} onClick={()=>setMenu(false)}>{l}</a>)}
+   <div className="menu-auth">
+    <button className="signin menu-signin" onClick={()=>{setMenu(false);start('signin')}}>{x('Sign in','Ingia')}</button>
+    <button className="reg menu-reg" onClick={()=>{setMenu(false);start('register')}}>{x('Register','Jisajili')}</button>
+   </div>
+  </nav>
   <div className="navr">
    <a className="iconbtn" href={route==='/'?'#search':'#/counties'} aria-label={x('Search','Tafuta')}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><path d="M11 19a8 8 0 1 1 0-16 8 8 0 0 1 0 16zm10 2-4.300-4.300"/></svg></a>
    <button className="signin" onClick={()=>start('signin')}>{x('Sign in','Ingia')}</button>
