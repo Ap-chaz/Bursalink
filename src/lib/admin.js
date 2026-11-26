@@ -2,7 +2,14 @@
 import { BURSARIES as DEFAULT_BURSARIES } from './data.js';
 
 const S_KEY = 'bursalink-admin-session';
+const TOKEN_KEY = 'bursalink_admin_token';
 const API_BASE = '/api';
+
+export const getToken = () => localStorage.getItem(TOKEN_KEY);
+export const setToken = token => {
+  if (token) localStorage.setItem(TOKEN_KEY, token);
+  else localStorage.removeItem(TOKEN_KEY);
+};
 
 const rd = (k, d) => {
   try {
@@ -19,8 +26,11 @@ let cachedAreaReqs = [];
 let cachedAudit = [];
 
 async function req(endpoint, options = {}) {
+  const token = getToken();
   const headers = {
     'Content-Type': 'application/json',
+    'ngrok-skip-browser-warning': 'true',
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
     ...options.headers
   };
 
@@ -33,6 +43,12 @@ async function req(endpoint, options = {}) {
   const data = await response.json().catch(() => ({}));
 
   if (!response.ok) {
+    if (response.status === 401 || response.status === 403) {
+      if (endpoint.includes('/admin/')) {
+        localStorage.removeItem(S_KEY);
+        setToken(null);
+      }
+    }
     throw new Error(data.error || response.statusText || 'Request failed');
   }
 
@@ -55,7 +71,7 @@ export const signIn = async (email, code) => {
 
   const res = await req('/auth/verify-code', {
     method: 'POST',
-    body: JSON.stringify({ email: email.trim(), code: code.trim() })
+    body: JSON.stringify({ email: email.trim(), code: code.trim(), portal: 'admin' })
   });
 
   if (res.user.role !== 'admin') {
@@ -64,6 +80,9 @@ export const signIn = async (email, code) => {
     throw new Error('Access denied: This email is not authorized as administrative staff.');
   }
 
+  if (res.token) {
+    setToken(res.token);
+  }
   wr(S_KEY, { email: res.user.email, role: res.user.role, id: res.user.id });
   return res.user;
 };
@@ -71,6 +90,7 @@ export const signIn = async (email, code) => {
 export const signOut = async () => {
   await req('/auth/logout', { method: 'POST' }).catch(() => {});
   localStorage.removeItem(S_KEY);
+  setToken(null);
 };
 
 export const bursaries = () => cachedBursaries;

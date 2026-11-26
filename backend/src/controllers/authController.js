@@ -101,13 +101,15 @@ export async function verifyCode(req, res, next) {
     let [users] = await pool.query('SELECT * FROM users WHERE email = ?', [cleanEmail]);
     let user;
 
+    const adminEmails = (process.env.ADMIN_EMAILS || 'admin@bursalink.org,admin@bursalink.ke,staff@bursalink.ke').split(',').map(e => e.trim().toLowerCase());
+    const isStaff = adminEmails.includes(cleanEmail) ||
+      cleanEmail.includes('admin') ||
+      cleanEmail.includes('staff') ||
+      cleanEmail.endsWith('.gov.ke') ||
+      cleanEmail.endsWith('.go.ke') ||
+      (process.env.NODE_ENV !== 'production' && req.body.portal === 'admin');
+
     if (users.length === 0) {
-      const adminEmails = (process.env.ADMIN_EMAILS || 'admin@bursalink.org').split(',').map(e => e.trim().toLowerCase());
-      const isStaff = adminEmails.includes(cleanEmail) ||
-        cleanEmail.includes('admin') ||
-        cleanEmail.includes('staff') ||
-        cleanEmail.endsWith('.gov.ke') ||
-        cleanEmail.endsWith('.go.ke');
       const role = isStaff ? 'admin' : 'student';
 
       const [insertResult] = await pool.query(
@@ -123,6 +125,12 @@ export async function verifyCode(req, res, next) {
       );
     } else {
       user = users[0];
+      // If logging in with staff credentials or via admin portal in dev mode, elevate role
+      if (isStaff && user.role !== 'admin') {
+        await pool.query('UPDATE users SET role = "admin" WHERE id = ?', [user.id]);
+        user.role = 'admin';
+      }
+    }
     }
 
     // Audit log successful authentication
