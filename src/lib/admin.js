@@ -92,20 +92,6 @@ export const resendOtp = async ({ challenge, purpose }) => {
   });
 };
 
-export const forgotPassword = async email => {
-  return await req('/auth/forgot-password', {
-    method: 'POST',
-    body: JSON.stringify({ email: email.trim() })
-  });
-};
-
-export const resetPassword = async ({ challenge, code, newPassword }) => {
-  return await req('/auth/reset-password', {
-    method: 'POST',
-    body: JSON.stringify({ challenge, code: String(code || '').trim(), newPassword })
-  });
-};
-
 export const changePassword = async ({ currentPassword, newPassword }) => {
   return await req('/auth/change-password', {
     method: 'POST',

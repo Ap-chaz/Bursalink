@@ -52,10 +52,9 @@ function PasswordField({ id, value, onChange, autoComplete, placeholder }) {
 }
 
 function Login({ done }) {
-  const [stage, setStage] = useState('creds'); // 'creds' | 'otp' | 'forgot' | 'reset'
+  const [stage, setStage] = useState('creds'); // 'creds' | 'otp'
   const [e, setE] = useState('');
   const [pw, setPw] = useState('');
-  const [pw2, setPw2] = useState('');
   const [c, setC] = useState('');
   const [challenge, setChallenge] = useState('');
   const [purpose, setPurpose] = useState('login');
@@ -110,44 +109,6 @@ function Login({ done }) {
       } finally {
         setLoading(false);
       }
-      return;
-    }
-
-    if (stage === 'forgot') {
-      if (!e || !/\S+@\S+\.\S+/.test(e)) return setErr('Please enter a valid work email.');
-      setLoading(true);
-      try {
-        const res = await ad.forgotPassword(e);
-        setChallenge(res.challenge);
-        setC('');
-        setPw('');
-        setPw2('');
-        setStage('reset');
-        setOk('If an account exists for that email, a 6-digit verification code has been sent.');
-      } catch (x) {
-        setErr(x.message || 'Failed to send verification code.');
-      } finally {
-        setLoading(false);
-      }
-      return;
-    }
-
-    if (stage === 'reset') {
-      if (pw !== pw2) return setErr('Passwords do not match.');
-      setLoading(true);
-      try {
-        await ad.resetPassword({ challenge, code: c, newPassword: pw });
-        setStage('creds');
-        setPw('');
-        setPw2('');
-        setC('');
-        setChallenge('');
-        setOk('Password updated. Sign in with your new password and complete 2FA verification.');
-      } catch (x) {
-        setErr(x.message || 'Could not reset password.');
-      } finally {
-        setLoading(false);
-      }
     }
   };
 
@@ -199,17 +160,11 @@ function Login({ done }) {
                 onChange={x => setPw(x.target.value)}
               />
 
-              <p style={{ marginTop: '10px', marginBottom: 0 }}>
-                <a href="#" onClick={ev => { ev.preventDefault(); setStage('forgot'); setPw(''); setErr(''); setOk(''); }}>
-                  Forgot password?
-                </a>
-              </p>
-
               {err && <p className="err" role="alert" style={{ marginTop: '12px' }}>{err}</p>}
 
               <div style={{ display: 'flex', gap: '10px', alignItems: 'center', marginTop: '16px', flexWrap: 'wrap' }}>
                 <button className="btn" type="submit" disabled={loading || !e.trim() || !pw}>
-                  {loading ? 'Checking...' : 'Continue to verification'}
+                  {loading ? 'Signing in...' : 'Sign in'}
                 </button>
               </div>
             </>
@@ -248,69 +203,6 @@ function Login({ done }) {
                   onClick={() => { setStage('creds'); setC(''); setErr(''); setOk(''); }}
                 >
                   Back
-                </button>
-              </div>
-            </>
-          )}
-
-          {(stage === 'forgot' || stage === 'reset') && (
-            <>
-              <h1>{stage === 'forgot' ? 'Reset staff password' : 'Enter code & new password'}</h1>
-              <p className="muted">
-                {stage === 'forgot'
-                  ? 'Enter your work email address to receive a 6-digit reset code.'
-                  : 'Check your inbox for the 6-digit code and set a strong new password.'}
-              </p>
-              {ok && <p className="ok" role="status">{ok}</p>}
-
-              {stage === 'forgot' ? (
-                <>
-                  <label htmlFor="afe">Work email</label>
-                  <input
-                    id="afe"
-                    type="email"
-                    autoComplete="email"
-                    value={e}
-                    onChange={x => setE(x.target.value)}
-                  />
-                </>
-              ) : (
-                <>
-                  <label htmlFor="arc">6-digit verification code</label>
-                  <input
-                    id="arc"
-                    inputMode="numeric"
-                    autoComplete="one-time-code"
-                    maxLength={6}
-                    autoFocus
-                    value={c}
-                    onChange={x => setC(x.target.value.replace(/\D/g, '').slice(0, 6))}
-                  />
-                  <label htmlFor="anp">New password</label>
-                  <PasswordField id="anp" autoComplete="new-password" value={pw} onChange={x => setPw(x.target.value)} />
-                  <small className="hint">At least 10 characters, including letters and a number or symbol.</small>
-                  <label htmlFor="anp2">Confirm new password</label>
-                  <PasswordField id="anp2" autoComplete="new-password" value={pw2} onChange={x => setPw2(x.target.value)} />
-                </>
-              )}
-
-              {err && <p className="err" role="alert" style={{ marginTop: '12px' }}>{err}</p>}
-
-              <div style={{ display: 'flex', gap: '10px', alignItems: 'center', marginTop: '16px', flexWrap: 'wrap' }}>
-                <button
-                  className="btn"
-                  type="submit"
-                  disabled={loading || (stage === 'forgot' ? !e.trim() : c.length !== 6 || !pw || !pw2)}
-                >
-                  {loading ? 'Please wait...' : stage === 'forgot' ? 'Send reset code' : 'Update password'}
-                </button>
-                <button
-                  type="button"
-                  className="btn2"
-                  disabled={loading}
-                  onClick={() => { setStage('creds'); setC(''); setPw(''); setPw2(''); setErr(''); setOk(''); }}
-                >
-                  Back to sign in
                 </button>
               </div>
             </>
@@ -399,6 +291,11 @@ function formatAudit(x) {
     case 'ADMIN_PROVISIONED':
       label = 'Admin Provisioned';
       desc = d?.email ? `Admin account configured for ${d.email}` : 'Admin provisioned';
+      break;
+    case 'ADMIN_RESET_BLOCKED':
+      label = 'Admin Reset Blocked';
+      isWarn = true;
+      desc = d?.email ? `Blocked self-service password reset for staff account ${d.email}` : 'Admin reset blocked';
       break;
     case 'USER_LOGOUT':
       label = 'User Sign Out';

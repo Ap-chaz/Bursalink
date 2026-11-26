@@ -170,7 +170,9 @@ export async function login(req, res, next) {
       // only someone who already knows the correct password can see this, so nothing is leaked
       await logAudit('LOGIN_BLOCKED_LOCKED', { userId: user.id, details: { email }, req });
       return res.status(429).json({
-        error: `This account is temporarily locked after too many failed attempts. Try again in ${POLICY.lockMinutes} minutes, or reset your password.`
+        error: user.role === 'admin'
+          ? `This staff account is temporarily locked after too many failed attempts. Try again in ${POLICY.lockMinutes} minutes or contact an administrator.`
+          : `This account is temporarily locked after too many failed attempts. Try again in ${POLICY.lockMinutes} minutes, or reset your password.`
       });
     }
 
@@ -274,7 +276,11 @@ export async function forgotPassword(req, res, next) {
     const email = normEmail(req.body?.email);
     if (!validEmail(email)) return res.status(400).json({ error: 'Please enter a valid email address.' });
 
-    const [rows] = await pool.execute('SELECT id FROM users WHERE email = ? LIMIT 1', [email]);
+    const [rows] = await pool.execute('SELECT id, role FROM users WHERE email = ? LIMIT 1', [email]);
+    if (rows[0]?.role === 'admin') {
+      await logAudit('ADMIN_RESET_BLOCKED', { userId: rows[0].id, details: { email }, req });
+      return res.json(otpStep('reset', fakeChallenge()));
+    }
     if (rows[0]) {
       const { code, challenge } = await dispatchOtp(req, { email, userId: rows[0].id, purpose: 'reset' });
       return res.json(otpStep('reset', challenge, code));

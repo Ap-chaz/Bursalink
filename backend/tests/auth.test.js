@@ -286,6 +286,15 @@ describe('Hardened Email + Password Auth, OTP Verification, Cookies, Lockout & C
       .get('/api/profile/admin/audit')
       .set('Cookie', studentCookie);
     assert.equal(stuAudit.status, 403);
+
+    // Self-service password reset is blocked for admin accounts without leaking existence
+    const admForgot = await request(app)
+      .post('/api/auth/forgot-password')
+      .set(CSRF)
+      .send({ email: adminEmail });
+    assert.equal(admForgot.status, 200);
+    assert.equal(admForgot.body.step, 'otp');
+    assert.equal(admForgot.body.devOtp, undefined);
   });
 
   test('Logout destroys server session; delete account requires password and removes user', async () => {
