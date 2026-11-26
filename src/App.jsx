@@ -9,6 +9,15 @@ import {Mark} from './Shell.jsx'
 const ST={submitted:'● Submitted',under_review:'◐ Under review',more_info_needed:'⚠ More information needed',shortlisted:'★ Shortlisted',approved:'✔ Approved',unsuccessful:'○ Unsuccessful',withdrawn:'– Withdrawn'}
 const money=b=>`KES ${b.min.toLocaleString()}–${b.max.toLocaleString()}`
 const where=b=>b.place?.name||'Everyone'
+
+function TabIcon({name, active}){
+  if(name==='home')return <svg width="22" height="22" viewBox="0 0 24 24" fill={active?'currentColor':'none'} stroke="currentColor" strokeWidth={active?'2':'1.8'} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3 10.5 12 3l9 7.5V20a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22" fill={active?'#fff':'none'} stroke={active?'#fff':'currentColor'}/></svg>
+  if(name==='discover')return <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={active?'2.4':'1.8'} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+  if(name==='applications')return <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={active?'2.4':'1.8'} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1" ry="1"/><path d="m9 14 2 2 4-4"/></svg>
+  if(name==='profile')return <svg width="22" height="22" viewBox="0 0 24 24" fill={active?'currentColor':'none'} stroke="currentColor" strokeWidth={active?'2':'1.8'} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4" fill={active?'currentColor':'none'}/></svg>
+  return null
+}
+
 export default function App(){
  const [s,setS]=useState(api.load()),[tab,setTab]=useState('home'),[view,setView]=useState(null),[intro,setIntro]=useState(0),[mode,setMode]=useState('signin'),[err,setErr]=useState('')
  const [bursaries,setBursaries]=useState(()=>api.listBursaries())
@@ -60,7 +69,7 @@ export default function App(){
  if(tab==='applications')body=<Apps {...{s,B,t,act,go,view,Card,err}}/>
  if(tab==='profile')body=view?.v==='notifs'?<Notifs {...{s,t,act,go}}/>:<Profile {...{s,t,act,go,err,unread,home:()=>setIntro(0)}}/>
  return <div className="app">{bar(true,unread)}<main>{body}</main>
- <nav className="tabs">{['home','discover','applications','profile'].map(k=><button key={k} className={tab===k?'on':''} onClick={()=>go(k)}>{t(k)}</button>)}</nav></div>}
+ <nav className="tabs" aria-label="Bottom Navigation">{['home','discover','applications','profile'].map(k=><button key={k} className={tab===k?'on':''} onClick={()=>go(k)} aria-label={t(k)}><span className="tab-icon-wrap"><TabIcon name={k} active={tab===k}/>{k==='profile'&&unread>0&&<span className="tab-dot"/>}</span><span className="tab-lbl">{t(k)}</span></button>)}</nav></div>}
 function Welcome({intro,setIntro,t}){const P=['Find bursaries made for you.','Apply from your phone. It is free.','Track every step until a decision.'];return <div className="card"><h2>{P[intro]}</h2><p>{intro+1} / 3</p><button className="primary" onClick={()=>setIntro(intro+1)}>{t('cont')}</button><p/><button className="secondary" onClick={()=>setIntro(3)}>Skip</button></div>}
 function Login({act,err,t,mode,setMode}){const reg=mode==='register',[e,setE]=useState(''),[n,setN]=useState(''),[c,setC]=useState(''),[agree,setAgree]=useState(false),[sent,setSent]=useState(false)
  const reset=m=>{setMode(m);setSent(false);setC('')}
@@ -79,9 +88,9 @@ function Login({act,err,t,mode,setMode}){const reg=mode==='register',[e,setE]=us
 function AreaForm({act,err,t}){const [co,setCo]=useState(''),[cn,setCn]=useState(''),[w,setW]=useState(''),[ok,setOk]=useState(false)
  return <div className="card"><h2>Where do you live?</h2><label>County</label><select value={co} onChange={e=>{setCo(e.target.value);setCn('');setW('')}}><option value="">Choose</option>{Object.keys(GEO).map(x=><option key={x}>{x}</option>)}</select>
  <label>Constituency</label><select value={cn} disabled={!co} onChange={e=>{setCn(e.target.value);setW('')}}><option value="">Choose</option>{co&&Object.keys(GEO[co]).map(x=><option key={x}>{x}</option>)}</select>
- <label>Ward</label>{cn&&GEO[co][cn].length===0?<input value={w} maxLength={60} placeholder="Type your ward name" onChange={e=>setW(e.target.value.replace(/\s+/g,' ').trimStart())}/>:<select value={w} disabled={!cn} onChange={e=>setW(e.target.value)}><option value="">Choose</option>{cn&&GEO[co][cn].map(x=><option key={x}>{x}</option>)}</select>}
+ <label>Ward</label><select value={w} disabled={!cn} onChange={e=>setW(e.target.value)}><option value="">Choose</option>{cn&&GEO[co][cn].map(x=><option key={x}>{x}</option>)}</select>
  <p><b>⚠ {t('lock')}</b></p><label className="check"><input type="checkbox" checked={ok} onChange={e=>setOk(e.target.checked)}/> {t('confirm')}</label>
- <button className="primary" disabled={!w.trim()||!ok} onClick={()=>act(()=>api.registerArea({county:co,constituency:cn,ward:w.trim()}))}>{t('save')}</button>{err&&<p className="err">{err}</p>}</div>}
+ <button className="primary" disabled={!w||!ok} onClick={()=>act(()=>api.registerArea({county:co,constituency:cn,ward:w}))}>{t('save')}</button>{err&&<p className="err">{err}</p>}</div>}
 function Home({s,B,t,go,Card,appFor}){const open=B.filter(b=>isOpen(b)&&placeOk(b,s.profile.area)),p=completion(s.profile)
  const rec=open.filter(b=>!appFor(b.id)&&(!s.profile.level||b.levels.includes(s.profile.level))),need=s.apps.find(a=>a.status==='more_info_needed')
  const dead=open.filter(b=>daysLeft(b)<=14).sort((a,b)=>daysLeft(a)-daysLeft(b))

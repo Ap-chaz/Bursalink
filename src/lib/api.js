@@ -38,6 +38,8 @@ const upd = fn => {
   return save(s);
 };
 
+export const mutate = upd;
+
 export const getToken = () => localStorage.getItem(TOKEN_KEY);
 export const setToken = token => {
   if (token) localStorage.setItem(TOKEN_KEY, token);
@@ -109,8 +111,7 @@ export const verifyCode = async (email, code) => {
 };
 
 export async function syncUserData() {
-  // Session lives in the HttpOnly cookie; only skip when nobody is signed in
-  if (!load().user && !getToken()) return;
+  if (!getToken()) return;
 
   try {
     const [profileData, appsData, draftsData, notifsData, savedData] = await Promise.all([
