@@ -233,9 +233,19 @@ export async function reviewAreaRequest(req, res, next) {
     await pool.query('UPDATE area_requests SET status = ? WHERE id = ?', [status, id]);
 
     if (status === 'approved') {
-      const areaVal = typeof areaReq.target_area === 'object'
-        ? JSON.stringify(areaReq.target_area)
-        : areaReq.target_area;
+      let areaVal;
+      const target = safeParse(areaReq.target_area);
+      if (typeof target === 'object' && target !== null) {
+        areaVal = JSON.stringify(target);
+      } else {
+        const [prof] = await pool.query('SELECT area FROM profiles WHERE user_id = ?', [areaReq.user_id]);
+        const curr = prof[0]?.area ? safeParse(prof[0].area) : {};
+        if (typeof curr === 'object' && curr !== null) {
+          areaVal = JSON.stringify({ ...curr, ward: target });
+        } else {
+          areaVal = JSON.stringify({ ward: target });
+        }
+      }
       await pool.query('UPDATE profiles SET area = ? WHERE user_id = ?', [areaVal, areaReq.user_id]);
     }
 

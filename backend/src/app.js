@@ -8,6 +8,9 @@ import { globalLimiter } from './middleware/rateLimiter.js';
 
 const app = express();
 
+// Trust reverse proxies (ngrok, Vite dev proxy, Cloudflare) for correct IP identification
+app.set('trust proxy', 1);
+
 // 1. HTTP Security Headers (Hide express, prevent sniffing & clickjacking)
 app.use(helmet({
   crossOriginResourcePolicy: { policy: 'cross-origin' }

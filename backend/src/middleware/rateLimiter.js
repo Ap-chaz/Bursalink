@@ -9,6 +9,7 @@ export const globalLimiter = rateLimit({
   max: isProd ? 1500 : 10000, // High ceiling in dev/shared IPs so multi-tab admin & student portals never 429
   standardHeaders: true,
   legacyHeaders: false,
+  validate: { xForwardedForHeader: false },
   message: { error: 'Too many requests from this IP, please try again after 15 minutes' },
   skip: () => isTest
 });
@@ -19,6 +20,7 @@ export const otpSendLimiter = rateLimit({
   max: isProd ? 10 : 100,
   standardHeaders: true,
   legacyHeaders: false,
+  validate: { xForwardedForHeader: false },
   message: { error: 'Too many verification code requests. Please wait 10 minutes before requesting another code.' },
   skip: () => isTest
 });
@@ -29,6 +31,7 @@ export const otpVerifyLimiter = rateLimit({
   max: isProd ? 15 : 100,
   standardHeaders: true,
   legacyHeaders: false,
+  validate: { xForwardedForHeader: false },
   message: { error: 'Too many failed verification attempts. Please wait 15 minutes or request a new code.' },
   skip: () => isTest
 });
