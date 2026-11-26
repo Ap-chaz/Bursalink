@@ -1,10 +1,10 @@
-// Public Landing page modelled on eCitizen, with quick shortcuts & live application tracking.
+// Public Landing page for BursaLink — Kenya's unified bursary & scholarship portal.
 import {useState,useMemo} from 'react'
 import './landing.css'
 import {Header,Footer} from './Shell.jsx'
 import * as api from './lib/api.js'
 
-// Simple stroke icons (24x24) so the page needs no icon library.
+// Clean stroke icons (24x24) for lightweight fast loading on all mobile networks.
 const P={
  search:'M11 19a8 8 0 1 1 0-16 8 8 0 0 1 0 16zm10 2-4.3-4.3',
  school:'M3 9l9-5 9 5-9 5-9-5zm4 3v4c0 1.5 2.2 3 5 3s5-1.5 5-3v-4M21 9v6',
@@ -20,9 +20,10 @@ const P={
  build:'M4 21V8l8-4 8 4v13M9 21v-5h6v5M8 11h2M14 11h2',
  flag:'M5 21V4m0 0h12l-2 4 2 4H5',
  hand:'M12 21c-4 0-7-2.500-7-6V9l3 1V5l3 1V4l3 1 3 1v9c0 3.500-2 6-5 6z',
- people:'M9 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6zm7 0a2.500 2.500 0 1 0 0-5M3 20a6 6 0 0 1 12 0M16 14a5 5 0 0 1 5 6'
+ people:'M9 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6zm7 0a2.500 2.500 0 1 0 0-5M3 20a6 6 0 0 1 12 0M16 14a5 5 0 0 1 5 6',
+ check:'M20 6L9 17l-5-5'
 }
-const Ic=({n,s=32})=><svg className="ic" width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d={P[n]}/></svg>
+const Ic=({n,s=24})=><svg className="ic" width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d={P[n]}/></svg>
 
 export default function Landing({lang,toggle,start}){
  const x=(a,b)=>lang==='sw'?b:a
@@ -33,45 +34,81 @@ export default function Landing({lang,toggle,start}){
  const [trackErr,setTrackErr]=useState('')
  const [trackLoading,setTrackLoading]=useState(false)
 
- const quick=[
-  ['school',x('Secondary school bursaries','Bursari za sekondari')],
-  ['uni',x('University & college funding','Ufadhili wa chuo')],
-  ['pin',x('Bursaries for my ward','Bursari za wadi yangu')],
-  ['build',x('County government funds','Mifuko ya kaunti')],
-  ['flag',x('Constituency (CDF) bursaries','Bursari za eneobunge')],
-  ['hand',x('Foundations & NGOs','Wakfu na NGO')],
-  ['clock',x('Closing this month','Zinazofungwa mwezi huu')],
-  ['doc',x('Track my application','Fuatilia ombi langu')]]
+ // Smart Filter Categories
+ const filterChips=[
+  ['school', x('High School Bursaries','Bursari za Sekondari'), 'school'],
+  ['uni', x('University & TVET Funds','Vyuo Vikuu na TVET'), 'uni'],
+  ['pin', x('My Ward & NG-CDF','Wadi Yangu & NG-CDF'), 'pin'],
+  ['clock', x('Closing Soon','Zinazofungwa Karibuni'), 'clock'],
+  ['hand', x('Corporate & Foundations','Wakfu & Mashirika'), 'hand'],
+  ['doc', x('Track Application Ref','Fuatilia Ombi kwa Nambari'), 'doc']
+ ]
 
- const feats=[
-  ['lock',x('One log-in, every bursary','Kuingia mara moja, bursari zote'),x('All you need is an email address. Sign in with a one-time code, with no password to remember.','Unahitaji barua pepe tu. Ingia kwa msimbo wa mara moja, bila nenosiri.')],
-  ['user',x("A single student profile",'Wasifu mmoja wa mwanafunzi'),x('Your ward, school level and documents are saved once and reused for every application you make.','Wadi yako, kiwango cha masomo na hati huhifadhiwa mara moja na kutumika kwa kila ombi.')],
-  ['bell',x('Convenient access on any phone','Rahisi kwa simu yoyote'),x('Apply, save drafts, get status updates and see every decision in one place. Applying is always free.','Omba, hifadhi rasimu, pata taarifa za hali na uone kila uamuzi mahali pamoja. Kuomba ni bure daima.')]]
+ // Featured Provider Opportunities
+ const opportunities=[
+  {
+   title: x('NG-CDF Constituency Education Funds','Mifuko ya Elimu ya Maeneobunge (NG-CDF)'),
+   org: x('290 National Constituencies','Maeneobunge Yote 290 Nchini'),
+   desc: x('Direct allocations voted by Parliament for secondary, college, and vocational learners residing in your registered constituency.','Ufadhili wa bunge kwa wanafunzi wa sekondari, vyuo na ufundi katika eneobunge lako.'),
+   type: x('Constituency','Eneobunge'),
+   amount: 'KES 5,000 – 30,000',
+   icon: 'flag'
+  },
+  {
+   title: x('County Government Executive Bursaries','Bursari za Serikali za Kaunti'),
+   org: x('47 County Education Departments','Idara za Elimu za Kaunti 47'),
+   desc: x('County-wide bursary schemes open to vulnerable, needy, and gifted students across all wards with published award records.','Bursari za kaunti kwa wanafunzi wanaohitaji katika wadi zote zenye orodha wazi ya waliopata.'),
+   type: x('County','Kaunti'),
+   amount: 'KES 10,000 – 50,000',
+   icon: 'build'
+  },
+  {
+   title: x('Equity Group Foundation — Wings to Fly','Wakfu wa Equity — Wings to Fly'),
+   org: 'Equity Group Foundation & Mastercard',
+   desc: x('Comprehensive secondary school scholarships covering tuition, boarding, books, uniform, and personal mentorship.','Ufadhili kamili wa masomo ya sekondari unaogharamia karo, malazi, sare na ushauri.'),
+   type: x('Foundation','Wakfu'),
+   amount: x('100% Comprehensive','Ufadhili Kamili 100%'),
+   icon: 'school'
+  },
+  {
+   title: x('KCB Foundation — 2Jiajiri & Secondary','Wakfu wa KCB — 2Jiajiri na Sekondari'),
+   org: 'KCB Foundation',
+   desc: x('Targeted funding for bright secondary students and technical vocational training (TVET) graduates across Kenya.','Ufadhili kwa wanafunzi hodari wa sekondari na mafunzo ya ufundi stadi (TVET) nchini.'),
+   type: x('Corporate','Shirika'),
+   amount: 'KES 25,000 – 70,000',
+   icon: 'uni'
+  },
+  {
+   title: x('Ward Development Education Grants','Mifuko ya Maendeleo ya Wadi'),
+   org: x('Ward Offices & MCAs','Ofisi za Wadi na Wawakilishi (MCA)'),
+   desc: x('Micro-grants dedicated to supporting orphaned and highly vulnerable children within the local ward boundary.','Ruzuku ndogo kusaidia watoto mayatima na familia zenye mahitaji maalum wadini.'),
+   type: x('Ward','Wadi'),
+   amount: 'KES 3,000 – 15,000',
+   icon: 'pin'
+  },
+  {
+   title: x('Co-operative Bank & Family Bank Foundations','Wakfu wa Co-operative & Family Bank'),
+   org: x('Banking Sector Foundations','Wakfu za Sekta ya Kibenki'),
+   desc: x('Four-year full high school and tertiary tuition scholarships for academically gifted but financially strained learners.','Ufadhili wa miaka minne wa karo ya shule za upili na vyuo kwa wanafunzi wenye alama za juu.'),
+   type: x('Corporate','Shirika'),
+   amount: x('Full Tuition','Karo Yote'),
+   icon: 'hand'
+  }
+ ]
 
- const providers=[
-  [x('Constituency funds','Mifuko ya eneobunge'),x('Bursaries for learners in a single constituency, reviewed by the local fund committee.','Bursari kwa wanafunzi wa eneobunge moja, zinazokaguliwa na kamati ya mfuko.'),'flag'],
-  [x('County governments','Serikali za kaunti'),x('County bursaries open to every ward, with a full record of each decision.','Bursari za kaunti kwa kila wadi, zikiwa na kumbukumbu ya kila uamuzi.'),'build'],
-  [x('Ward development funds','Mifuko ya wadi'),x('Smaller grants for primary and secondary learners who live in the ward.','Ruzuku ndogo kwa wanafunzi wa msingi na sekondari wanaoishi wadini.'),'pin'],
-  [x('Foundations','Wakfu'),x('Scholarships open to all Kenyan students or focused on one place or level.','Ufadhili kwa wanafunzi wote wa Kenya au unaolenga eneo au kiwango kimoja.'),'hand'],
-  [x('Corporate programmes','Programu za makampuni'),x('Company grants for university and college students with clear closing dates.','Ruzuku za makampuni kwa wanafunzi wa chuo, zenye tarehe wazi za kufunga.'),'uni'],
-  [x('NGOs and community groups','NGO na vikundi vya jamii'),x('Support for learners from families that need it most, in your own community.','Msaada kwa wanafunzi kutoka familia zinazohitaji zaidi, katika jamii yako.'),'people']]
+ const filteredOpps=useMemo(()=>{
+  if(!q.trim())return opportunities
+  const query=q.toLowerCase()
+  return opportunities.filter(o=>
+   o.title.toLowerCase().includes(query) ||
+   o.org.toLowerCase().includes(query) ||
+   o.desc.toLowerCase().includes(query) ||
+   o.type.toLowerCase().includes(query)
+  )
+ },[q,lang])
 
- const shown=useMemo(()=>providers.filter(p=>(p[0]+p[1]).toLowerCase().includes(q.trim().toLowerCase())),[q,lang])
-
- const hero=<svg className="herobg" viewBox="0 0 1600 640" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
-  <defs><linearGradient id="sky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#2c4a7a"/><stop offset=".55" stopColor="#7d8fb4"/><stop offset="1" stopColor="#e9a46e"/></linearGradient>
-  <linearGradient id="gr" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#1a3a3a"/><stop offset=".55" stopColor="#0c1f24"/></linearGradient></defs>
-  <rect width="1600" height="640" fill="url(#sky)"/>
-  <g fill="#34507a" opacity=".55"><rect x="60" y="330" width="90" height="180"/><rect x="170" y="290" width="70" height="220"/><rect x="1250" y="300" width="100" height="210"/><rect x="1370" y="350" width="80" height="160"/><rect x="1470" y="310" width="90" height="200"/></g>
-  <g fill="#10272e">
-   <path d="M560 520V360l120-70 120 70v160z"/><path d="M680 290V220l0-30"/><rect x="672" y="200" width="16" height="92"/><path d="M640 220h80l-40-36z"/>
-   <rect x="440" y="410" width="130" height="110"/><rect x="800" y="410" width="150" height="110"/>
-   <path d="M0 520h1600v120H0z" fill="url(#gr)"/></g>
-  <g fill="#ffd98a" opacity=".9">{[[600,400],[640,400],[720,400],[760,400],[600,450],[640,450],[720,450],[760,450],[460,440],[500,440],[830,440],[880,440],[920,440]].map(([a,b],i)=><rect key={i} x={a} y={b} width="14" height="20" rx="2"/>)}</g>
- </svg>
-
- const onQuickClick=(iconKey)=>{
-  if(iconKey==='doc'){
+ const handleChipClick=(key)=>{
+  if(key==='doc'){
    setTrackingOpen(true)
    setTrackErr('')
   } else {
@@ -96,57 +133,108 @@ export default function Landing({lang,toggle,start}){
  }
 
  return <div className="lp" id="top">
-  <Header {...{lang,toggle,start}} route="/"/>
+  <Header {...{lang,toggle,start}} route="/" onTrack={()=>setTrackingOpen(true)}/>
 
-  <section className="hero">{hero}<div className="shade"/>
+  {/* Hero Section — Distinct Education Funding Identity */}
+  <section className="hero">
+   <div className="hero-mesh" aria-hidden="true"/>
    <div className="heroin">
-    <h1>{x('Kenya bursaries simplified','Bursari za Kenya zimerahisishwa')}<br/>{x('All your applications unified','Maombi yako yote mahali pamoja')}</h1>
-    <div className="panel" id="search">
-     <form className="searchbar" role="search" onSubmit={e=>{e.preventDefault();start()}}><Ic n="search" s={22}/>
-      <input value={q} onChange={e=>setQ(e.target.value)} aria-label={x('Search bursaries','Tafuta bursari')} placeholder={x('Type name of bursary, provider, county, ward etc...','Andika jina la bursari, mtoaji, kaunti, wadi n.k...')}/></form>
-     <ul className="quick">{quick.map(([i,l])=><li key={l}><button onClick={()=>onQuickClick(i)}><Ic n={i} s={34}/><span>{l}</span></button></li>)}</ul>
-    </div></div></section>
+    <div className="hero-badge">
+     <span className="live-dot"/>
+     <span>{x('Kenya’s Official Bursary & Scholarship Gateway','Mlango Rasmi wa Bursari na Ufadhili Kenya')}</span>
+    </div>
 
-  {/* Live Application Tracker Modal / Overlay */}
-  {trackingOpen && (
-   <div style={{
-    position:'fixed',inset:0,background:'rgba(10,20,30,0.7)',backdropFilter:'blur(8px)',
-    zIndex:100,display:'flex',alignItems:'center',justifyContent:'center',padding:'12px'
-   }} onClick={()=>setTrackingOpen(false)}>
-    <div style={{
-     background:'#fff',borderRadius:'20px',maxWidth:'560px',width:'100%',padding:'clamp(16px, 4vw, 28px)',
-     boxShadow:'0 20px 40px rgba(0,0,0,0.25)',color:'#222',maxHeight:'90vh',overflowY:'auto'
-    }} onClick={e=>e.stopPropagation()}>
-     <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',gap:'12px',marginBottom:'14px'}}>
-      <h2 style={{fontSize:'clamp(18px, 4.5vw, 22px)',fontWeight:'600',margin:0}}>
-       {x('Track Your Application Status','Fuatilia Hali ya Ombi Lako')}
-      </h2>
-      <button style={{background:'none',border:0,fontSize:'22px',cursor:'pointer',color:'#666',lineHeight:1,padding:'4px'}} onClick={()=>setTrackingOpen(false)}>✕</button>
+    <h1 className="hero-title">
+     {x('Never Miss Another','Usikose Tena')} <br/>
+     <span className="grad-txt">{x('Bursary Deadline.','Tarehe ya Mwisho ya Bursari.')}</span>
+    </h1>
+
+    <p className="hero-sub">
+     {x(
+      'Discover, match, and apply for verified NG-CDF, County Government, and Foundation scholarships across all 1,450 wards — zero paperwork, zero fees, 100% transparent.',
+      'Tafuta, linganisha, na utume maombi ya bursari halisi za NG-CDF, Kaunti, na mashirika binafsi katika wadi zote 1,450 — bila karatasi, bila malipo, na kwa uwazi 100%.'
+     )}
+    </p>
+
+    {/* Search Hub */}
+    <div className="search-hub" id="search">
+     <form className="hub-bar" role="search" onSubmit={e=>{e.preventDefault();start()}}>
+      <div className="hub-search-icon"><Ic n="search" s={22}/></div>
+      <input
+       value={q}
+       onChange={e=>setQ(e.target.value)}
+       aria-label={x('Search bursaries','Tafuta bursari')}
+       placeholder={x('Search by bursary name, constituency, county, or ward (e.g. Westlands, Secondary, Equity)...','Tafuta kwa jina la bursari, kaunti, eneobunge, au wadi (mf. Westlands, Sekondari, Equity)...')}
+      />
+      <button type="submit" className="hub-submit-btn">{x('Explore Funds','Tafuta Mifuko')}</button>
+     </form>
+
+     {/* Filter Chips */}
+     <div className="hub-chips">
+      <span className="hub-chips-label">{x('Popular Categories:','Aina Maarufu:')}</span>
+      <div className="chips-list">
+       {filterChips.map(([k, lbl, icon])=>(
+        <button key={k} className="chip-item" onClick={()=>handleChipClick(k)}>
+         <Ic n={icon} s={16}/>
+         <span>{lbl}</span>
+        </button>
+       ))}
+      </div>
      </div>
-     <p style={{color:'#666',fontSize:'14px',marginBottom:'16px',lineHeight:1.5}}>
-      {x('Enter your official Bursalink reference number (e.g. BL-2026-000001) to view real-time status and review history from the government database.',
-         'Weka nambari yako ya kumbukumbu ya Bursalink (mfano BL-2026-000001) ili uone hali ya sasa na historia kutoka hifadhidata ya serikali.')}
+    </div>
+
+    {/* Transparent Live Impact Metrics */}
+    <div className="hero-stats">
+     <div className="stat-box">
+      <b>1,450</b>
+      <span>{x('Wards Covered','Wadi Zote 1,450')}</span>
+     </div>
+     <div className="stat-sep"/>
+     <div className="stat-box">
+      <b>290</b>
+      <span>{x('Constituencies','Maeneobunge 290')}</span>
+     </div>
+     <div className="stat-sep"/>
+     <div className="stat-box">
+      <b>47</b>
+      <span>{x('Counties Mapped','Kaunti Zote 47')}</span>
+     </div>
+     <div className="stat-sep"/>
+     <div className="stat-box">
+      <b>KES 0</b>
+      <span>{x('100% Free Application','Maombi Bure 100%')}</span>
+     </div>
+    </div>
+   </div>
+  </section>
+
+  {/* Live Application Tracker Modal */}
+  {trackingOpen && (
+   <div className="tracker-overlay" onClick={()=>setTrackingOpen(false)}>
+    <div className="tracker-modal" onClick={e=>e.stopPropagation()}>
+     <div className="tracker-head">
+      <div>
+       <span className="badge-tag">{x('Live Status','Hali ya Moja kwa Moja')}</span>
+       <h2 style={{margin:'6px 0 0',fontSize:'20px',color:'#0f172a'}}>{x('Track Application Status','Fuatilia Hali ya Ombi Lako')}</h2>
+      </div>
+      <button className="tracker-close" onClick={()=>setTrackingOpen(false)} aria-label="Close">✕</button>
+     </div>
+     <p style={{margin:'0 0 16px',fontSize:'14px',color:'#64748b'}}>
+      {x('Enter the reference number from your confirmation SMS or email (e.g. BL-2026-NBI-4829).','Weka nambari ya kumbukumbu uliyopokea kwenye SMS au barua pepe.')}
      </p>
 
-     <form onSubmit={submitTrack} style={{display:'flex',flexWrap:'wrap',gap:'10px',marginBottom:'18px'}}>
+     <form onSubmit={submitTrack} style={{display:'flex',gap:'8px',marginBottom:'16px'}}>
       <input
+       style={{
+        flex:1,height:'48px',padding:'0 16px',borderRadius:'12px',border:'1px solid #cbd5e1',
+        fontFamily:'monospace',fontSize:'15px',color:'#1e293b'
+       }}
+       placeholder="e.g. BL-2026-NBI-4829"
        value={trackRef}
-       onChange={e=>setTrackRef(e.target.value.toUpperCase())}
-       placeholder="BL-2026-000001"
-       style={{
-        flex:'1 1 200px',minWidth:0,padding:'12px 14px',fontSize:'16px',borderRadius:'12px',
-        border:'2px solid #ccc',fontFamily:'monospace',fontWeight:'bold'
-       }}
+       onChange={e=>setTrackRef(e.target.value)}
       />
-      <button
-       type="submit"
-       disabled={trackLoading||!trackRef.trim()}
-       style={{
-        flex:'1 1 auto',background:'#1fb355',color:'#fff',border:0,borderRadius:'12px',
-        padding:'12px 20px',fontSize:'15px',fontWeight:'600',cursor:'pointer',whiteSpace:'nowrap'
-       }}
-      >
-       {trackLoading ? x('Searching...','Inatafuta...') : x('Check Status','Angalia Hali')}
+      <button type="submit" className="cta-btn sm" disabled={trackLoading}>
+       {trackLoading ? x('Searching...','Inatafuta...') : x('Track','Fuatilia')}
       </button>
      </form>
 
@@ -201,18 +289,127 @@ export default function Landing({lang,toggle,start}){
    </div>
   )}
 
-  <section className="banner"><div className="bannerin">
-   <p>{x('Over ','Zaidi ya ')}<b>{x('1,400 wards','wadi 1,400')}</b>{x(' across all ',' katika kaunti zote ')}<b>{x('47 counties','47')}</b>{x(', with bursaries from constituencies, counties, foundations and companies.','; bursari kutoka maeneobunge, kaunti, wakfu na makampuni.')}</p></div>
-   <div className="bannerbar"><div className="bbin"><span>{x('Get started on BursaLink today','Anza kutumia BursaLink leo')}</span><div><button className="signin sm" onClick={()=>start('signin')}>{x('Sign in','Ingia')}</button><button className="reg sm" onClick={()=>start('register')}>{x('Register','Jisajili')}</button></div></div></div>
+  {/* Replaces eCitizen's green bar with Student Journey Flow */}
+  <section className="workflow-sec" id="how-it-works">
+   <div className="sec-in">
+    <div className="sec-title-wrap">
+     <span className="badge-tag">{x('3 Easy Steps','Hatua 3 Rahisi')}</span>
+     <h2 className="sec-h2">{x('How BursaLink Works for Students & Parents','Jinsi BursaLink Inavyorahisisha Maombi ya Elimu')}</h2>
+     <p className="sec-p">{x('No more printing physical forms, traveling to constituency offices, or losing track of award lists.','Hakuna tena kuchapisha fomu, kusafiri hadi ofisi za eneobunge, au kupoteza taarifa za orodha.')}</p>
+    </div>
+
+    <div className="steps-container">
+     <div className="workflow-card">
+      <div className="wf-step-num">01</div>
+      <div className="wf-icon"><Ic n="user" s={28}/></div>
+      <h3>{x('Create One Verified Student Profile','Weka Wasifu Wako Mara Moja')}</h3>
+      <p>{x('Select your County, Constituency, and Ward. Upload your admission slip and fee structure once — safely stored in your secure vault.','Chagua Kaunti, Eneobunge, na Wadi yako. Hifadhi hati zako za shule kwa usalama.')}</p>
+     </div>
+
+     <div className="workflow-card">
+      <div className="wf-step-num">02</div>
+      <div className="wf-icon"><Ic n="school" s={28}/></div>
+      <h3>{x('Automatic Ward & Level Match','Ulinganishaji wa Kiotomatiki')}</h3>
+      <p>{x('BursaLink automatically screens your ward and level against active NG-CDF and County rules so you only apply where you qualify.','BursaLink inakuchagulia mifuko unayostahili kulingana na sheria za wadi na kiwango chako cha masomo.')}</p>
+     </div>
+
+     <div className="workflow-card">
+      <div className="wf-step-num">03</div>
+      <div className="wf-icon"><Ic n="doc" s={28}/></div>
+      <h3>{x('Direct Online Tracking & Cheques','Ufuatiliaji wa Moja kwa Moja')}</h3>
+      <p>{x('Follow your reference number in real time from submission to fund committee approval. Get SMS alerts when shortlists are announced.','Fuatilia ombi lako mtandaoni kuanzia kupokelewa hadi kuidhinishwa na kupata ujumbe wa SMS.')}</p>
+     </div>
+    </div>
+
+    <div className="workflow-action-box">
+     <div>
+      <h4>{x('Start Your Free Application Today','Anza Ombi Lako Bila Malipo Leo')}</h4>
+      <p>{x('Over 20+ national, county, and constituency funding windows are currently open.','Zaidi ya mifuko 20 ya kitaifa, kaunti na maeneobunge iko wazi sasa.')}</p>
+     </div>
+     <div className="wf-actions">
+      <button className="cta-btn" onClick={()=>start('register')}>{x('Register as Student →','Jisajili kama Mwanafunzi →')}</button>
+      <button className="cta-btn secondary" onClick={()=>setTrackingOpen(true)}>{x('Track Application','Fuatilia Ombi')}</button>
+     </div>
+    </div>
+   </div>
   </section>
 
-  <section className="feats" id="help"><div className="featin">{feats.map(([i,h,t])=><div key={h}><Ic n={i} s={46}/><h3>{h}</h3><p>{t}</p></div>)}</div></section>
+  {/* Unique Student Problem-Solving Value Props (Replaces eCitizen copy) */}
+  <section className="benefits-sec" id="benefits">
+   <div className="sec-in">
+    <div className="sec-title-wrap">
+     <span className="badge-tag">{x('Why BursaLink','Kwa Nini BursaLink')}</span>
+     <h2 className="sec-h2">{x('Fair, Fast & Transparent Education Access','Elimu ya Haki, Haraka na Wazi')}</h2>
+     <p className="sec-p">{x('Designed directly with Kenyan learners, parents, and bursary committees in mind.','Imebuniwa kusaidia wanafunzi, wazazi na kamati za bursari nchini Kenya.')}</p>
+    </div>
 
-  <section className="provs" id="providers"><div className="provin">
-   <h2>{x('Who offers bursaries','Wanaotoa bursari')}</h2>
-   <div className="pgrid">{shown.map(([h,t,i])=><article className="pcard" key={h}><span className="pic"><Ic n={i} s={26}/></span><div><h3>{h}</h3><p>{t}</p></div></article>)}
-    {!shown.length&&<p className="none">{x('Nothing matches. Clear the search box to see everyone.','Hakuna kinacholingana. Futa kisanduku cha kutafuta.')}</p>}</div>
-  </div></section>
+    <div className="benefits-grid">
+     <div className="benefit-card">
+      <div className="b-icon-wrap"><Ic n="lock" s={26}/></div>
+      <h3>{x('No More Paper Chasing','Hakuna Tena Kusubiri Karatasi')}</h3>
+      <p>{x('Apply online from any smartphone. Never stand in long lines outside CDF offices or chief camps just to collect physical paper forms.','Omba mtandaoni kupitia simu yoyote. Hakuna haja ya kusimama kwenye foleni ofisi za CDF au chifu.')}</p>
+     </div>
+
+     <div className="benefit-card">
+      <div className="b-icon-wrap"><Ic n="pin" s={26}/></div>
+      <h3>{x('IEBC Ward-Level Precision','Usahihi wa Wadi za IEBC')}</h3>
+      <p>{x('Integrated with official boundary data across all 1,450 wards. Avoid disqualification due to submitting to the wrong constituency office.','Imeunganishwa na wadi zote 1,450 ili kuhakikisha unatuma ombi mahali panapostahili.')}</p>
+     </div>
+
+     <div className="benefit-card">
+      <div className="b-icon-wrap"><Ic n="bell" s={26}/></div>
+      <h3>{x('Deadline Reminders & SMS','Kumbusho za Tarehe za Mwisho')}</h3>
+      <p>{x('Receive instant notifications before application windows close, so you never miss funding for tuition, books, or boarding.','Pata arifa kabla ya dirisha la maombi kufungwa ili usikose ufadhili wa karo au malazi.')}</p>
+     </div>
+
+     <div className="benefit-card">
+      <div className="b-icon-wrap"><Ic n="heart" s={26}/></div>
+      <h3>{x('100% Free & Anti-Fraud Guarantee','Bure 100% & Ulinzi Dhidi ya Ulaghai')}</h3>
+      <p>{x('BursaLink is completely free. We adhere to the Kenya Data Protection Act 2019 (ODPC). Never pay brokers or intermediaries.','Kutumia BursaLink ni bure kabisa. Inalindwa kisheria (ODPC). Usimlipe mtu yeyote fedha ili kupata bursari.')}</p>
+     </div>
+    </div>
+   </div>
+  </section>
+
+  {/* Live Opportunities & Verified Funds (Replaces eCitizen agency grid) */}
+  <section className="opps-sec" id="opportunities">
+   <div className="sec-in">
+    <div className="sec-title-wrap">
+     <span className="badge-tag">{x('Verified Partners','Wafadhili Walioidhinishwa')}</span>
+     <h2 className="sec-h2">{x('Explore Funding Programs Across Kenya','Chunguza Programu za Bursari')}</h2>
+     <p className="sec-p">{x('From parliamentary constituency funds to corporate foundations and county allocations.','Kuanzia mifuko ya maeneobunge hadi mashirika ya kitaifa na kaunti.')}</p>
+    </div>
+
+    <div className="opps-grid">
+     {filteredOpps.map((opp, idx)=>(
+      <article className="opp-card" key={idx}>
+       <div className="opp-top">
+        <span className="opp-type-badge">{opp.type}</span>
+        <span className="opp-amount-badge">{opp.amount}</span>
+       </div>
+       <div className="opp-content">
+        <div className="opp-icon"><Ic n={opp.icon} s={24}/></div>
+        <div>
+         <h3 className="opp-title">{opp.title}</h3>
+         <p className="opp-org">{opp.org}</p>
+        </div>
+       </div>
+       <p className="opp-desc">{opp.desc}</p>
+       <div className="opp-footer">
+        <span className="opp-verified">✔ {x('Verified Fund','Mfuko Halisi')}</span>
+        <button className="opp-apply-btn" onClick={()=>start('register')}>{x('Check Eligibility →','Angalia Ustahiki →')}</button>
+       </div>
+      </article>
+     ))}
+     {!filteredOpps.length && (
+      <div className="opp-empty">
+       <p>{x('No bursary program matches your search filter.','Hakuna mfuko unaolingana na utafutaji wako.')}</p>
+       <button className="cta-btn sm" onClick={()=>setQ('')}>{x('Clear Filter','Ondoa Kichujio')}</button>
+      </div>
+     )}
+    </div>
+   </div>
+  </section>
 
   <Footer lang={lang}/>
  </div>
