@@ -421,3 +421,29 @@
 .track-icon-btn{color:#059669;background:#f0fdf4}
 @media(max-width:1024px){.steps-container{grid-template-columns:1fr;gap:16px}.benefits-grid{grid-template-columns:repeat(2,1fr)}.opps-grid{grid-template-columns:repeat(2,1fr)}}
 @media(max-width:768px){.benefits-grid,.opps-grid{grid-template-columns:1fr}.workflow-action-box{flex-direction:column;align-items:stretch;text-align:center}.wf-actions{justify-content:center}}
+
+/* ---- Responsiveness fixes ---- */
+.lp .links a,.nav-track-btn{white-space:nowrap}
+.lp .links{gap:22px;margin-left:20px}
+.lp .links .nav-track-btn{display:none}
+.lp .links.open .nav-track-btn{display:inline-flex}
+@media(max-width:1180px){.lp .links{gap:16px;margin-left:12px}.lp .links a{font-size:14px}.navr .signin{padding:8px 8px}}
+@media(max-width:1040px){.lp .links:not(.open) a{font-size:13.5px}.navr .iconbtn:not(.lang):not(.burger):not(.track-icon-btn){display:none}}
+@media(min-width:900px){.track-icon-btn{display:inline-flex}}
+@media(max-width:899px){.track-icon-btn{display:none}}
+.hero h1{font-size:clamp(26px,4.6vw,44px)}
+@media(min-width:640px) and (max-height:760px){
+ .heroin{padding:28px 24px 24px}
+ .lp .hero h1{font-size:clamp(26px,4vw,36px)}
+ .panel{margin-top:24px;padding:20px 16px 22px}
+ .searchbar{height:50px}
+ .quick{margin-top:18px;gap:14px 8px}
+ .quick button{font-size:13px;gap:8px;padding:4px}
+ .quick svg{width:28px;height:28px}
+}
+@media(max-width:639px){
+ .lp .hero h1{font-size:clamp(24px,7vw,30px);line-height:1.25}
+ .quick{gap:10px 6px}
+ .quick button{font-size:12.5px;gap:6px}
+ .quick svg{width:26px;height:26px}
+}

@@ -168,7 +168,7 @@ export default function Landing({lang,toggle,start}){
 
   <section className="hero">{hero}<div className="shade"/>
    <div className="heroin">
-    <h1>{x('Kenya bursaries simplified','Bursari za Kenya zimerahisishwa')}<br/>{x('All your applications unified','Maombi yako yote mahali pamoja')}</h1>
+    <h1>{x('Find the bursary made for your ward','Pata bursari iliyoundwa kwa wadi yako')}<br/>{x('Apply once. Never miss a deadline.','Omba mara moja. Usikose tarehe ya mwisho.')}</h1>
     <div className="panel" id="search">
      <form className="searchbar" role="search" onSubmit={e=>{e.preventDefault();start()}}><Ic n="search" s={22}/>
       <input value={q} onChange={e=>setQ(e.target.value)} aria-label={x('Search bursaries','Tafuta bursari')} placeholder={x('Type name of bursary, provider, county, ward etc...','Andika jina la bursari, mtoaji, kaunti, wadi n.k...')}/></form>
