@@ -1,12 +1,14 @@
+import './setup.js';
 import { test, describe, after } from 'node:test';
 import assert from 'node:assert/strict';
 import request from 'supertest';
 import app from '../src/app.js';
 import { closePool } from '../src/config/db.js';
+import { CSRF, createVerifiedStudent, ensureAdminAndLogin } from './helpers.js';
 
 describe('Applications & Drafts Endpoints', () => {
-  let studentToken = '';
-  let adminToken = '';
+  let studentCookie = '';
+  let adminCookie = '';
   let applicationRef = '';
 
   after(async () => {
@@ -14,15 +16,14 @@ describe('Applications & Drafts Endpoints', () => {
   });
 
   test('Setup student with matching area and admin', async () => {
-    const studentRes = await request(app)
-      .post('/api/auth/verify-code')
-      .send({ email: `app_student_${Date.now()}@example.org`, code: '123456' });
-    studentToken = studentRes.body.token;
+    const stu = await createVerifiedStudent(app);
+    studentCookie = stu.cookie;
 
     // Register area matching Westlands Bursary (b1): constituency = 'Westlands'
-    await request(app)
+    const areaRes = await request(app)
       .post('/api/profile/area')
-      .set('Authorization', `Bearer ${studentToken}`)
+      .set(CSRF)
+      .set('Cookie', studentCookie)
       .send({
         area: {
           county: 'Nairobi',
@@ -30,12 +31,10 @@ describe('Applications & Drafts Endpoints', () => {
           ward: 'Parklands/Highridge'
         }
       });
+    assert.equal(areaRes.status, 200);
 
-    // Admin
-    const adminRes = await request(app)
-      .post('/api/auth/verify-code')
-      .send({ email: 'admin@bursalink.org', code: '123456' });
-    adminToken = adminRes.body.token;
+    const adm = await ensureAdminAndLogin(app);
+    adminCookie = adm.cookie;
   });
 
   test('POST /api/applications/drafts saves application draft', async () => {
@@ -47,16 +46,16 @@ describe('Applications & Drafts Endpoints', () => {
 
     const res = await request(app)
       .post('/api/applications/drafts')
-      .set('Authorization', `Bearer ${studentToken}`)
+      .set(CSRF)
+      .set('Cookie', studentCookie)
       .send({ bursaryId: 'b1', data: draftData });
 
     assert.equal(res.status, 200);
     assert.equal(res.body.success, true);
 
-    // Retrieve drafts
     const getRes = await request(app)
       .get('/api/applications/drafts')
-      .set('Authorization', `Bearer ${studentToken}`);
+      .set('Cookie', studentCookie);
 
     assert.equal(getRes.status, 200);
     assert.ok(getRes.body.b1);
@@ -66,7 +65,8 @@ describe('Applications & Drafts Endpoints', () => {
   test('POST /api/applications fails if bursary is closed (b5)', async () => {
     const res = await request(app)
       .post('/api/applications')
-      .set('Authorization', `Bearer ${studentToken}`)
+      .set(CSRF)
+      .set('Cookie', studentCookie)
       .send({ bursaryId: 'b5', answers: { q: 'Closed bursary attempt' } });
 
     assert.equal(res.status, 400);
@@ -75,7 +75,8 @@ describe('Applications & Drafts Endpoints', () => {
   test('POST /api/applications succeeds for eligible open bursary (b1)', async () => {
     const res = await request(app)
       .post('/api/applications')
-      .set('Authorization', `Bearer ${studentToken}`)
+      .set(CSRF)
+      .set('Cookie', studentCookie)
       .send({
         bursaryId: 'b1',
         answers: {
@@ -91,10 +92,9 @@ describe('Applications & Drafts Endpoints', () => {
 
     applicationRef = res.body.ref;
 
-    // Verify draft was cleaned up
     const draftsRes = await request(app)
       .get('/api/applications/drafts')
-      .set('Authorization', `Bearer ${studentToken}`);
+      .set('Cookie', studentCookie);
 
     assert.equal(draftsRes.body.b1, undefined);
   });
@@ -102,7 +102,8 @@ describe('Applications & Drafts Endpoints', () => {
   test('POST /api/applications prevents duplicate submissions', async () => {
     const res = await request(app)
       .post('/api/applications')
-      .set('Authorization', `Bearer ${studentToken}`)
+      .set(CSRF)
+      .set('Cookie', studentCookie)
       .send({ bursaryId: 'b1', answers: {} });
 
     assert.equal(res.status, 400);
@@ -112,7 +113,7 @@ describe('Applications & Drafts Endpoints', () => {
   test('GET /api/applications returns student application with history', async () => {
     const res = await request(app)
       .get('/api/applications')
-      .set('Authorization', `Bearer ${studentToken}`);
+      .set('Cookie', studentCookie);
 
     assert.equal(res.status, 200);
     assert.ok(Array.isArray(res.body));
@@ -125,15 +126,16 @@ describe('Applications & Drafts Endpoints', () => {
   test('POST /api/applications/:ref/withdraw withdraws application', async () => {
     const res = await request(app)
       .post(`/api/applications/${applicationRef}/withdraw`)
-      .set('Authorization', `Bearer ${studentToken}`);
+      .set(CSRF)
+      .set('Cookie', studentCookie);
 
     assert.equal(res.status, 200);
     assert.equal(res.body.success, true);
 
-    // Attempting to withdraw again must fail (already decided)
     const retryRes = await request(app)
       .post(`/api/applications/${applicationRef}/withdraw`)
-      .set('Authorization', `Bearer ${studentToken}`);
+      .set(CSRF)
+      .set('Cookie', studentCookie);
 
     assert.equal(retryRes.status, 400);
   });
@@ -141,17 +143,17 @@ describe('Applications & Drafts Endpoints', () => {
   test('Admin lists applications and updates status', async () => {
     const listRes = await request(app)
       .get('/api/applications/admin/all')
-      .set('Authorization', `Bearer ${adminToken}`);
+      .set('Cookie', adminCookie);
 
     assert.equal(listRes.status, 200);
     assert.ok(Array.isArray(listRes.body));
     const appItem = listRes.body.find(a => a.ref === applicationRef);
     assert.ok(appItem);
 
-    // Admin updates status to approved
     const updateRes = await request(app)
       .patch(`/api/applications/admin/${applicationRef}/status`)
-      .set('Authorization', `Bearer ${adminToken}`)
+      .set(CSRF)
+      .set('Cookie', adminCookie)
       .send({
         status: 'approved',
         note: 'Bursary approved by constituency committee.'
@@ -162,15 +164,12 @@ describe('Applications & Drafts Endpoints', () => {
   });
 
   test('Public tracker GET /api/applications/track/:ref returns live status without login', async () => {
-    // 1. Invalid reference format returns 400
     const badRes = await request(app).get('/api/applications/track/invalid-ref');
     assert.equal(badRes.status, 400);
 
-    // 2. Non-existent reference returns 404
     const notFoundRes = await request(app).get('/api/applications/track/BL-2026-999999');
     assert.equal(notFoundRes.status, 404);
 
-    // 3. Existing application returns live status and timeline
     const res = await request(app).get(`/api/applications/track/${applicationRef}`);
     assert.equal(res.status, 200);
     assert.equal(res.body.found, true);

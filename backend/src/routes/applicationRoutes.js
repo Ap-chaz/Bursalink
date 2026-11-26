@@ -10,11 +10,12 @@ import {
   adminUpdateStatus
 } from '../controllers/applicationController.js';
 import { authenticate, requireAdmin } from '../middleware/auth.js';
+import { trackLimiter } from '../middleware/rateLimiter.js';
 
 const router = Router();
 
 // Public application tracker (No login required - enter reference number e.g. BL-2026-000001)
-router.get('/track/:ref', trackApplicationPublic);
+router.get('/track/:ref', trackLimiter, trackApplicationPublic);
 
 // Student authenticated application routes
 router.get('/', authenticate, getApplications);

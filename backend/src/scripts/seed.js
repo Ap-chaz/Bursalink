@@ -116,7 +116,7 @@ export const sampleBursaries = [
 export async function runSeed() {
   console.log('Seeding official bursary listings...');
   for (const b of sampleBursaries) {
-    await pool.query(
+    await pool.execute(
       `INSERT INTO bursaries (id, title, org, type, place, min, max, levels, opens, closes, status, docs, \`desc\`, how, contact, q)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON DUPLICATE KEY UPDATE

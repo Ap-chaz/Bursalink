@@ -30,7 +30,7 @@ function placeOk(bursaryPlace, userArea) {
 export async function getApplications(req, res, next) {
   try {
     const userId = req.user.id;
-    const [apps] = await pool.query(
+    const [apps] = await pool.execute(
       `SELECT a.*, b.title as bursary_title, b.org as bursary_org
        FROM applications a
        JOIN bursaries b ON a.bursary_id = b.id
@@ -44,9 +44,10 @@ export async function getApplications(req, res, next) {
     let historyMap = {};
 
     if (appIds.length > 0) {
-      const [histories] = await pool.query(
-        `SELECT * FROM application_history WHERE application_id IN (?) ORDER BY created_at ASC`,
-        [appIds]
+      const placeholders = appIds.map(() => '?').join(',');
+      const [histories] = await pool.execute(
+        `SELECT * FROM application_history WHERE application_id IN (${placeholders}) ORDER BY created_at ASC`,
+        appIds
       );
       histories.forEach(h => {
         if (!historyMap[h.application_id]) historyMap[h.application_id] = [];
@@ -83,7 +84,7 @@ export async function getApplications(req, res, next) {
 export async function getDrafts(req, res, next) {
   try {
     const userId = req.user.id;
-    const [rows] = await pool.query('SELECT bursary_id, data FROM drafts WHERE user_id = ?', [userId]);
+    const [rows] = await pool.execute('SELECT bursary_id, data FROM drafts WHERE user_id = ?', [userId]);
 
     const drafts = {};
     rows.forEach(r => {
@@ -105,7 +106,7 @@ export async function saveDraft(req, res, next) {
       return res.status(400).json({ error: 'bursaryId is required' });
     }
 
-    await pool.query(
+    await pool.execute(
       `INSERT INTO drafts (user_id, bursary_id, data)
        VALUES (?, ?, ?)
        ON DUPLICATE KEY UPDATE data = VALUES(data), updated_at = CURRENT_TIMESTAMP`,
@@ -128,7 +129,7 @@ export async function submitApplication(req, res, next) {
     }
 
     // 1. Check bursary existence and deadline
-    const [bursaries] = await pool.query('SELECT * FROM bursaries WHERE id = ?', [bursaryId]);
+    const [bursaries] = await pool.execute('SELECT * FROM bursaries WHERE id = ?', [bursaryId]);
     if (bursaries.length === 0) {
       return res.status(404).json({ error: 'Bursary not found' });
     }
@@ -143,7 +144,7 @@ export async function submitApplication(req, res, next) {
     }
 
     // 2. Check student's profile & area eligibility
-    const [profiles] = await pool.query('SELECT area FROM profiles WHERE user_id = ?', [userId]);
+    const [profiles] = await pool.execute('SELECT area FROM profiles WHERE user_id = ?', [userId]);
     const userArea = profiles.length > 0 && profiles[0].area
       ? (typeof profiles[0].area === 'string' ? JSON.parse(profiles[0].area) : profiles[0].area)
       : null;
@@ -153,7 +154,7 @@ export async function submitApplication(req, res, next) {
     }
 
     // 3. Check duplicate application
-    const [existing] = await pool.query(
+    const [existing] = await pool.execute(
       'SELECT id FROM applications WHERE user_id = ? AND bursary_id = ?',
       [userId, bursaryId]
     );
@@ -167,7 +168,7 @@ export async function submitApplication(req, res, next) {
 
     while (true) {
       try {
-        const [rows] = await pool.query(
+        const [rows] = await pool.execute(
           "SELECT MAX(CAST(SUBSTRING_INDEX(ref, '-', -1) AS UNSIGNED)) as maxSeq FROM applications WHERE ref LIKE ?",
           [`BL-${currentYear}-%`]
         );
@@ -175,7 +176,7 @@ export async function submitApplication(req, res, next) {
         ref = `BL-${currentYear}-${String(seq).padStart(6, '0')}`;
 
         // 5. Insert application
-        await pool.query(
+        await pool.execute(
           `INSERT INTO applications (id, ref, user_id, bursary_id, answers, status)
            VALUES (?, ?, ?, ?, ?, 'submitted')`,
           [ref, ref, userId, bursaryId, JSON.stringify(answers || {})]
@@ -190,18 +191,18 @@ export async function submitApplication(req, res, next) {
     }
 
     // 6. Record history
-    await pool.query(
+    await pool.execute(
       `INSERT INTO application_history (application_id, status, note)
        VALUES (?, 'submitted', 'Application submitted by student')`,
       [ref]
     );
 
     // 7. Delete draft
-    await pool.query('DELETE FROM drafts WHERE user_id = ? AND bursary_id = ?', [userId, bursaryId]);
+    await pool.execute('DELETE FROM drafts WHERE user_id = ? AND bursary_id = ?', [userId, bursaryId]);
 
     // 8. Create notification
     const notifId = 'notif_' + Date.now();
-    await pool.query(
+    await pool.execute(
       `INSERT INTO notifications (id, user_id, text, go)
        VALUES (?, ?, ?, ?)`,
       [notifId, userId, `Application ${ref} submitted`, JSON.stringify({ view: 'app', id: ref })]
@@ -239,7 +240,7 @@ export async function withdrawApplication(req, res, next) {
     const userId = req.user.id;
     const { ref } = req.params;
 
-    const [apps] = await pool.query(
+    const [apps] = await pool.execute(
       'SELECT * FROM applications WHERE ref = ? AND user_id = ?',
       [ref, userId]
     );
@@ -253,8 +254,8 @@ export async function withdrawApplication(req, res, next) {
       return res.status(400).json({ error: 'Cannot withdraw an application that has already been decided.' });
     }
 
-    await pool.query("UPDATE applications SET status = 'withdrawn' WHERE id = ?", [app.id]);
-    await pool.query(
+    await pool.execute("UPDATE applications SET status = 'withdrawn' WHERE id = ?", [app.id]);
+    await pool.execute(
       "INSERT INTO application_history (application_id, status, note) VALUES (?, 'withdrawn', 'Application withdrawn by applicant')",
       [app.id]
     );
@@ -280,7 +281,7 @@ export async function trackApplicationPublic(req, res, next) {
       return res.status(400).json({ error: 'Please enter a valid reference number format (e.g. BL-2026-000001)' });
     }
 
-    const [rows] = await pool.query(
+    const [rows] = await pool.execute(
       `SELECT a.id, a.ref, a.status, a.created_at, a.updated_at,
               b.title as bursary_title, b.org as bursary_org
        FROM applications a
@@ -295,7 +296,7 @@ export async function trackApplicationPublic(req, res, next) {
 
     const app = rows[0];
 
-    const [historyRows] = await pool.query(
+    const [historyRows] = await pool.execute(
       'SELECT status, note, created_at FROM application_history WHERE application_id = ? ORDER BY created_at ASC',
       [app.id]
     );
@@ -323,7 +324,7 @@ export async function trackApplicationPublic(req, res, next) {
 
 export async function adminListApplications(req, res, next) {
   try {
-    const [rows] = await pool.query(`
+    const [rows] = await pool.execute(`
       SELECT a.*, u.email as applicant_email, b.title as bursary_title, b.org as bursary_org
       FROM applications a
       JOIN users u ON a.user_id = u.id
@@ -352,7 +353,7 @@ export async function adminUpdateStatus(req, res, next) {
       return res.status(400).json({ error: `Invalid status. Allowed: ${allowedStatuses.join(', ')}` });
     }
 
-    const [apps] = await pool.query(
+    const [apps] = await pool.execute(
       `SELECT a.*, u.email as applicant_email, b.title as bursary_title
        FROM applications a
        JOIN users u ON a.user_id = u.id
@@ -368,8 +369,8 @@ export async function adminUpdateStatus(req, res, next) {
     const cleanNote = typeof note === 'string' ? note.trim().slice(0, 2000) : '';
     const label = status.replace(/_/g, ' ');
 
-    await pool.query('UPDATE applications SET status = ? WHERE id = ?', [status, app.id]);
-    await pool.query(
+    await pool.execute('UPDATE applications SET status = ? WHERE id = ?', [status, app.id]);
+    await pool.execute(
       'INSERT INTO application_history (application_id, status, note) VALUES (?, ?, ?)',
       [app.id, status, cleanNote || null]
     );
@@ -379,7 +380,7 @@ export async function adminUpdateStatus(req, res, next) {
     const text = cleanNote
       ? `Application ${app.ref} is now ${label}. Message from the committee: "${cleanNote}"`
       : `Application ${app.ref} is now ${label}.`;
-    await pool.query(
+    await pool.execute(
       'INSERT INTO notifications (id, user_id, text, go) VALUES (?, ?, ?, ?)',
       [notifId, app.user_id, text, JSON.stringify({ view: 'app', id: app.ref })]
     );

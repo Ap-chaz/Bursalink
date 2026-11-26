@@ -1,189 +1,352 @@
-import crypto from 'node:crypto';
-import jwt from 'jsonwebtoken';
 import pool from '../config/db.js';
 import { logAudit } from '../services/auditService.js';
 import { sendOtpEmail } from '../services/emailService.js';
+import {
+  hashPassword, verifyPassword, dummyVerify, needsRehash, validatePassword
+} from '../services/passwordService.js';
+import { issueOtp, verifyOtp, peekChallenge, fakeChallenge } from '../services/otpService.js';
+import { createSession, destroySession, destroyUserSessions } from '../services/sessionService.js';
+import { POLICY, SESSION_COOKIE, isProd, adminEmails } from '../config/security.js';
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const GENERIC_LOGIN_ERROR = 'Invalid email or password.';
+const GENERIC_OTP_ERROR = 'Invalid or expired verification code.';
 
-function hashOtp(code) {
-  return crypto.createHash('sha256').update(code).digest('hex');
+const normEmail = v => (typeof v === 'string' ? v.trim().toLowerCase() : '');
+const validEmail = e => e.length > 0 && e.length <= 254 && EMAIL_REGEX.test(e);
+// Only ever true in automated tests (never in production): lets the suite read the code without an inbox.
+const exposeOtp = () => process.env.AUTH_EXPOSE_OTP === 'true' && !isProd();
+
+// ---------- session cookie helpers ----------
+const cookieOptions = (req, maxAgeMs) => ({
+  httpOnly: true,                       // invisible to JavaScript (XSS cannot steal it)
+  secure: isProd() || req.secure,       // HTTPS only in production
+  sameSite: 'strict',                   // never sent on cross-site requests (CSRF defence)
+  path: '/',
+  ...(maxAgeMs ? { maxAge: maxAgeMs } : {})
+});
+const readSessionCookie = req => req.cookies?.[SESSION_COOKIE()];
+const clearSessionCookie = (req, res) => res.clearCookie(SESSION_COOKIE(), cookieOptions(req));
+
+async function dispatchOtp(req, { email, userId, purpose }) {
+  const { code, challenge } = await issueOtp({ email, userId, purpose });
+  await logAudit('OTP_REQUEST', { userId, details: { email, purpose }, req });
+  // not awaited: response time must not reveal whether an email was really sent
+  sendOtpEmail(email, code, purpose).catch(() => {});
+  if (process.env.NODE_ENV === 'development') console.log(`[AUTH] ${purpose} code for ${email}: ${code}`);
+  return { code, challenge };
 }
 
-export async function sendCode(req, res, next) {
-  try {
-    const { email } = req.body;
-    if (!email || !EMAIL_REGEX.test(email)) {
-      return res.status(400).json({ error: 'Valid email is required' });
-    }
+const otpStep = (purpose, challenge, code) => ({
+  success: true,
+  step: 'otp',
+  purpose,
+  challenge,
+  ...(exposeOtp() && code ? { devOtp: code } : {})
+});
 
-    const cleanEmail = email.toLowerCase().trim();
+async function finishLogin(req, res, user) {
+  // session rotation: any session presented with this request is revoked, a brand new token is issued
+  const previous = readSessionCookie(req);
+  if (previous) await destroySession(previous);
 
-    // Cryptographically Secure Pseudo-Random Number Generator (CSPRNG)
-    const code = crypto.randomInt(100000, 1000000).toString();
-    const hashedCode = hashOtp(code);
-    const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
-
-    // Save SHA-256 hashed OTP to database (protects against database leaks)
-    await pool.query(
-      'INSERT INTO otps (email, code, expires_at) VALUES (?, ?, ?)',
-      [cleanEmail, hashedCode, expiresAt]
-    );
-
-    // Audit log
-    await logAudit('OTP_REQUEST', {
-      details: { email: cleanEmail },
-      req
-    });
-
-    // Dispatch verification code via Brevo email service (when configured)
-    await sendOtpEmail(cleanEmail, code);
-
-    // In development/test, also log OTP to console for convenience
-    if (process.env.NODE_ENV !== 'production') {
-      console.log(`[AUTH CSPRNG] OTP sent for ${cleanEmail}: ${code}`);
-    }
-
-    res.json({
-      success: true,
-      message: 'Verification code sent',
-      // In dev/test mode, expose demoCode for test suites / demo convenience
-      ...(process.env.NODE_ENV !== 'production' && { demoCode: code })
-    });
-  } catch (err) {
-    next(err);
-  }
+  const { token, maxAgeMs } = await createSession(user, req);
+  res.cookie(SESSION_COOKIE(), token, cookieOptions(req, maxAgeMs));
+  await pool.execute(
+    'UPDATE users SET failed_attempts = 0, locked_until = NULL, last_login_at = NOW() WHERE id = ?',
+    [user.id]
+  );
+  await logAudit('USER_LOGIN_SUCCESS', { userId: user.id, details: { email: user.email, role: user.role }, req });
+  res.json({ success: true, user: { id: user.id, email: user.email, role: user.role } });
 }
 
-export async function verifyCode(req, res, next) {
+// ---------- register ----------
+export async function register(req, res, next) {
   try {
-    const { email, code } = req.body;
-    if (!email || !code) {
-      return res.status(400).json({ error: 'Email and code are required' });
+    const email = normEmail(req.body?.email);
+    const name = String(req.body?.name ?? '').trim().replace(/\s+/g, ' ');
+    const password = req.body?.password;
+
+    if (!validEmail(email)) return res.status(400).json({ error: 'Please enter a valid email address.' });
+    if (name.length < 2 || name.length > 100) return res.status(400).json({ error: 'Please enter your full name.' });
+    const pwError = validatePassword(password, { email });
+    if (pwError) return res.status(400).json({ error: pwError });
+
+    const [rows] = await pool.execute('SELECT id, role, email_verified FROM users WHERE email = ? LIMIT 1', [email]);
+    const existing = rows[0];
+    const hash = await hashPassword(password); // always hashed so timing is identical in every branch
+
+    // Staff accounts are provisioned by an administrator, never through public sign-up. Existing verified
+    // accounts get the exact same reply as a new one so the form cannot be used to discover who is registered.
+    if (adminEmails().includes(email) || (existing && (existing.email_verified || existing.role === 'admin'))) {
+      await logAudit('REGISTER_REJECTED', { details: { email }, req });
+      await pool.execute('SELECT 1');
+      return res.json(otpStep('verify_email', fakeChallenge()));
     }
 
-    const cleanEmail = email.toLowerCase().trim();
-    const cleanCode = code.toString().trim();
-    const hashedInput = hashOtp(cleanCode);
-
-    let isValid = false;
-
-    // Check against hashed code in database
-    const [rows] = await pool.query(
-      'SELECT id, code FROM otps WHERE email = ? AND used = FALSE AND expires_at > NOW() ORDER BY created_at DESC LIMIT 1',
-      [cleanEmail]
-    );
-
-    if (rows.length > 0) {
-      const storedHash = rows[0].code;
-      // Timing-safe buffer comparison to prevent timing attacks
-      if (storedHash.length === hashedInput.length &&
-          crypto.timingSafeEqual(Buffer.from(storedHash), Buffer.from(hashedInput))) {
-        isValid = true;
-        await pool.query('UPDATE otps SET used = TRUE WHERE id = ?', [rows[0].id]);
-      }
-    }
-
-    // Allow dev/demo code '123456' strictly outside production
-    if (!isValid && process.env.NODE_ENV !== 'production' && cleanCode === '123456') {
-      isValid = true;
-    }
-
-    if (!isValid) {
-      await logAudit('OTP_VERIFY_FAILED', {
-        details: { email: cleanEmail },
-        req
-      });
-      return res.status(400).json({ error: 'Invalid or expired verification code' });
-    }
-
-    // Find or create user
-    let [users] = await pool.query('SELECT * FROM users WHERE email = ?', [cleanEmail]);
-    let user;
-
-    const adminEmails = (process.env.ADMIN_EMAILS || 'admin@bursalink.org,admin@bursalink.ke,staff@bursalink.ke').split(',').map(e => e.trim().toLowerCase());
-    const isStaff = adminEmails.includes(cleanEmail) ||
-      cleanEmail.includes('admin') ||
-      cleanEmail.includes('staff') ||
-      cleanEmail.endsWith('.gov.ke') ||
-      cleanEmail.endsWith('.go.ke') ||
-      (process.env.NODE_ENV !== 'production' && req.body.portal === 'admin');
-
-    if (users.length === 0) {
-      const role = isStaff ? 'admin' : 'student';
-
-      const [insertResult] = await pool.query(
-        'INSERT INTO users (email, role) VALUES (?, ?)',
-        [cleanEmail, role]
-      );
-      user = { id: insertResult.insertId, email: cleanEmail, role };
-
-      await pool.query(
-        `INSERT INTO profiles (user_id, area, saver_mode, lang, notify_status, notify_deadline, notify_match, docs, details)
-         VALUES (?, NULL, FALSE, 'en', TRUE, TRUE, TRUE, '{}', '{}')`,
-        [user.id]
+    let userId;
+    if (existing) {
+      // unverified leftover (abandoned or squatted sign-up): the person who proves the inbox takes it over
+      userId = existing.id;
+      await pool.execute('UPDATE users SET password_hash = ?, password_changed_at = NOW() WHERE id = ?', [hash, userId]);
+      await pool.execute(
+        `UPDATE profiles SET details = JSON_SET(COALESCE(details, JSON_OBJECT()), '$.name', ?) WHERE user_id = ?`,
+        [name, userId]
       );
     } else {
-      user = users[0];
-      // If logging in with staff credentials or via admin portal in dev mode, elevate role
-      if (isStaff && user.role !== 'admin') {
-        await pool.query('UPDATE users SET role = "admin" WHERE id = ?', [user.id]);
-        user.role = 'admin';
+      const conn = await pool.getConnection();
+      try {
+        await conn.beginTransaction();
+        const [ins] = await conn.execute(
+          `INSERT INTO users (email, role, password_hash, email_verified, password_changed_at)
+           VALUES (?, 'student', ?, FALSE, NOW())`,
+          [email, hash]
+        );
+        userId = ins.insertId;
+        await conn.execute(
+          `INSERT INTO profiles (user_id, area, saver_mode, lang, notify_status, notify_deadline, notify_match, docs, details)
+           VALUES (?, NULL, FALSE, 'en', TRUE, TRUE, TRUE, '{}', ?)`,
+          [userId, JSON.stringify({ name })]
+        );
+        await conn.commit();
+      } catch (err) {
+        await conn.rollback();
+        if (err.code === 'ER_DUP_ENTRY') return res.json(otpStep('verify_email', fakeChallenge()));
+        throw err;
+      } finally {
+        conn.release();
       }
     }
 
-    // Audit log successful authentication
-    await logAudit('USER_LOGIN_SUCCESS', {
-      userId: user.id,
-      details: { email: user.email, role: user.role },
-      req
-    });
-
-    // Sign JWT token with strict expiry
-    const token = jwt.sign(
-      { id: user.id, email: user.email, role: user.role },
-      process.env.JWT_SECRET || 'bursalink_jwt_super_secret_dev_key_2026',
-      { expiresIn: process.env.JWT_EXPIRES_IN || '7d' }
-    );
-
-    // Issue Secure, HttpOnly, SameSite Session Cookie (Government Standard - Immune to XSS token theft)
-    const cookieOptions = {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'strict',
-      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
-      path: '/'
-    };
-    res.cookie('token', token, cookieOptions);
-
-    res.json({
-      success: true,
-      token,
-      user: {
-        id: user.id,
-        email: user.email,
-        role: user.role
-      }
-    });
+    await logAudit('USER_REGISTERED', { userId, details: { email }, req });
+    const { code, challenge } = await dispatchOtp(req, { email, userId, purpose: 'verify_email' });
+    res.json(otpStep('verify_email', challenge, code));
   } catch (err) {
     next(err);
   }
 }
 
-export async function logout(req, res, next) {
+// ---------- login ----------
+export async function login(req, res, next) {
   try {
-    const cookieOptions = {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'strict',
-      path: '/'
-    };
-    res.clearCookie('token', cookieOptions);
+    const email = normEmail(req.body?.email);
+    const password = req.body?.password;
+    const adminPortal = req.body?.portal === 'admin';
 
-    if (req.user) {
-      await logAudit('USER_LOGOUT', { userId: req.user.id, req });
+    if (!validEmail(email) || typeof password !== 'string' || !password || password.length > 128) {
+      return res.status(400).json({ error: 'Email and password are required.' });
     }
 
+    const [rows] = await pool.execute(
+      `SELECT id, email, role, password_hash, email_verified, failed_attempts,
+              (locked_until IS NOT NULL AND locked_until > NOW()) AS locked
+         FROM users WHERE email = ? LIMIT 1`,
+      [email]
+    );
+    const user = rows[0];
+
+    // A bcrypt comparison always runs: against the real hash, or the dummy hash for unknown accounts / accounts without a password.
+    const passwordOk = user?.password_hash
+      ? await verifyPassword(password, user.password_hash)
+      : await dummyVerify(password);
+    // Staff and students are strictly separated: each must use its own portal.
+    const portalOk = !!user && (user.role === 'admin') === adminPortal;
+
+    if (user?.locked && passwordOk && portalOk) {
+      // only someone who already knows the correct password can see this, so nothing is leaked
+      await logAudit('LOGIN_BLOCKED_LOCKED', { userId: user.id, details: { email }, req });
+      return res.status(429).json({
+        error: `This account is temporarily locked after too many failed attempts. Try again in ${POLICY.lockMinutes} minutes, or reset your password.`
+      });
+    }
+
+    if (!user || !passwordOk || !portalOk || user.locked) {
+      let reason = !user ? 'unknown_user' : user.locked ? 'locked' : !passwordOk ? 'bad_password' : 'wrong_portal';
+      if (user && !user.locked && !passwordOk) {
+        await pool.execute('UPDATE users SET failed_attempts = failed_attempts + 1 WHERE id = ?', [user.id]);
+        if (user.failed_attempts + 1 >= POLICY.maxFailedLogins) {
+          await pool.execute(
+            `UPDATE users SET locked_until = DATE_ADD(NOW(), INTERVAL ${Number(POLICY.lockMinutes)} MINUTE), failed_attempts = 0 WHERE id = ?`,
+            [user.id]
+          );
+          await logAudit('ACCOUNT_LOCKED', { userId: user.id, details: { email, minutes: POLICY.lockMinutes }, req });
+          reason = 'locked_now';
+        }
+      }
+      await logAudit('LOGIN_FAILED', { userId: user?.id ?? null, details: { email, reason, portal: adminPortal ? 'admin' : 'student' }, req });
+      // identical message and status for every failure: no account enumeration
+      return res.status(401).json({ error: GENERIC_LOGIN_ERROR });
+    }
+
+    if (needsRehash(user.password_hash)) {
+      await pool.execute('UPDATE users SET password_hash = ? WHERE id = ?', [await hashPassword(password), user.id]);
+    }
+
+    // OTP is the verification step: always for staff, and for any student who has not yet verified their email.
+    if (!user.email_verified || user.role === 'admin') {
+      const purpose = user.email_verified ? 'login' : 'verify_email';
+      const { code, challenge } = await dispatchOtp(req, { email: user.email, userId: user.id, purpose });
+      return res.json(otpStep(purpose, challenge, code));
+    }
+
+    await finishLogin(req, res, user);
+  } catch (err) {
+    next(err);
+  }
+}
+
+// ---------- OTP verification (second step) ----------
+export async function verifyOtpCode(req, res, next) {
+  try {
+    const { challenge, code, purpose } = req.body || {};
+    if (!['verify_email', 'login'].includes(purpose)) {
+      return res.status(400).json({ error: 'Invalid request.' });
+    }
+
+    const result = await verifyOtp({ challenge, code, purpose });
+    if (!result) {
+      await logAudit('OTP_VERIFY_FAILED', { details: { purpose }, req });
+      return res.status(400).json({ error: GENERIC_OTP_ERROR });
+    }
+
+    const [rows] = await pool.execute('SELECT id, email, role FROM users WHERE id = ? LIMIT 1', [result.userId]);
+    const user = rows[0];
+    if (!user) return res.status(400).json({ error: GENERIC_OTP_ERROR });
+
+    if (purpose === 'verify_email') {
+      await pool.execute('UPDATE users SET email_verified = TRUE WHERE id = ?', [user.id]);
+    }
+    await finishLogin(req, res, user);
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function resendOtp(req, res, next) {
+  try {
+    const { challenge, purpose } = req.body || {};
+    if (!['verify_email', 'login'].includes(purpose)) return res.status(400).json({ error: 'Invalid request.' });
+    const found = await peekChallenge(challenge, purpose);
+    if (!found) return res.json(otpStep(purpose, fakeChallenge()));
+    const { code, challenge: fresh } = await dispatchOtp(req, { email: found.email, userId: found.userId, purpose });
+    res.json(otpStep(purpose, fresh, code));
+  } catch (err) {
+    next(err);
+  }
+}
+
+// ---------- password reset (OTP proves ownership of the inbox) ----------
+export async function forgotPassword(req, res, next) {
+  try {
+    const email = normEmail(req.body?.email);
+    if (!validEmail(email)) return res.status(400).json({ error: 'Please enter a valid email address.' });
+
+    const [rows] = await pool.execute('SELECT id FROM users WHERE email = ? LIMIT 1', [email]);
+    if (rows[0]) {
+      const { code, challenge } = await dispatchOtp(req, { email, userId: rows[0].id, purpose: 'reset' });
+      return res.json(otpStep('reset', challenge, code));
+    }
+    await pool.execute('SELECT 1');
+    // same response whether or not the account exists
+    res.json(otpStep('reset', fakeChallenge()));
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function resetPassword(req, res, next) {
+  try {
+    const { challenge, code, newPassword } = req.body || {};
+
+    // Basic password policy runs before touching the DB/challenge so weak passwords fail uniformly
+    // without revealing whether a reset challenge is real or fake.
+    const basicPwError = validatePassword(newPassword);
+    if (basicPwError) return res.status(400).json({ error: basicPwError });
+
+    const result = await verifyOtp({
+      challenge,
+      code,
+      purpose: 'reset',
+      preCheck: row => validatePassword(newPassword, { email: row.email })
+    });
+    if (!result) {
+      await logAudit('OTP_VERIFY_FAILED', { details: { purpose: 'reset' }, req });
+      return res.status(400).json({ error: GENERIC_OTP_ERROR });
+    }
+    if (result.preCheckError) {
+      return res.status(400).json({ error: result.preCheckError });
+    }
+
+    const hash = await hashPassword(newPassword);
+    await pool.execute(
+      `UPDATE users SET password_hash = ?, email_verified = TRUE, failed_attempts = 0, locked_until = NULL,
+              password_changed_at = NOW() WHERE id = ?`,
+      [hash, result.userId]
+    );
+    await destroyUserSessions(result.userId); // sign out everywhere
+    await logAudit('PASSWORD_RESET', { userId: result.userId, details: { email: result.email }, req });
+    res.json({ success: true });
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function changePassword(req, res, next) {
+  try {
+    const { currentPassword, newPassword } = req.body || {};
+    if (typeof currentPassword !== 'string' || !currentPassword) {
+      return res.status(400).json({ error: 'Current password is required.' });
+    }
+    const [rows] = await pool.execute('SELECT id, email, password_hash FROM users WHERE id = ? LIMIT 1', [req.user.id]);
+    const user = rows[0];
+    const ok = user?.password_hash ? await verifyPassword(currentPassword, user.password_hash) : await dummyVerify(currentPassword);
+    if (!user || !ok) {
+      await logAudit('PASSWORD_CHANGE_FAILED', { userId: req.user.id, req });
+      return res.status(401).json({ error: 'Current password is incorrect.' });
+    }
+    const pwError = validatePassword(newPassword, { email: user.email });
+    if (pwError) return res.status(400).json({ error: pwError });
+
+    await pool.execute('UPDATE users SET password_hash = ?, password_changed_at = NOW() WHERE id = ?', [await hashPassword(newPassword), user.id]);
+    await destroyUserSessions(user.id, req.sessionId); // every other device is signed out
+    await logAudit('PASSWORD_CHANGED', { userId: user.id, req });
+    res.json({ success: true });
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function deleteAccount(req, res, next) {
+  try {
+    const { password } = req.body || {};
+    if (typeof password !== 'string' || !password) {
+      return res.status(400).json({ error: 'Password is required to delete your account.' });
+    }
+    const [rows] = await pool.execute('SELECT id, email, password_hash FROM users WHERE id = ? LIMIT 1', [req.user.id]);
+    const user = rows[0];
+    const ok = user?.password_hash ? await verifyPassword(password, user.password_hash) : await dummyVerify(password);
+    if (!user || !ok) {
+      await logAudit('ACCOUNT_DELETE_FAILED', { userId: req.user.id, req });
+      return res.status(401).json({ error: 'Password is incorrect.' });
+    }
+
+    await logAudit('ACCOUNT_DELETED', { userId: user.id, details: { email: user.email }, req });
+    await destroyUserSessions(user.id);
+    clearSessionCookie(req, res);
+    await pool.execute('DELETE FROM users WHERE id = ?', [user.id]);
+    res.json({ success: true, message: 'Account deleted successfully' });
+  } catch (err) {
+    next(err);
+  }
+}
+
+// ---------- session ----------
+export async function logout(req, res, next) {
+  try {
+    const token = readSessionCookie(req);
+    if (token) await destroySession(token);
+    clearSessionCookie(req, res);
+    if (req.user) await logAudit('USER_LOGOUT', { userId: req.user.id, details: { email: req.user.email }, req });
     res.json({ success: true, message: 'Logged out successfully' });
   } catch (err) {
     next(err);
@@ -192,19 +355,11 @@ export async function logout(req, res, next) {
 
 export async function getMe(req, res, next) {
   try {
-    const [users] = await pool.query('SELECT id, email, role, created_at FROM users WHERE id = ?', [req.user.id]);
-    if (users.length === 0) {
-      return res.status(404).json({ error: 'User not found' });
-    }
+    const [users] = await pool.execute('SELECT id, email, role, created_at FROM users WHERE id = ?', [req.user.id]);
+    if (users.length === 0) return res.status(404).json({ error: 'User not found' });
     const user = users[0];
-
-    const [profiles] = await pool.query('SELECT * FROM profiles WHERE user_id = ?', [user.id]);
-    const profile = profiles[0] || null;
-
-    res.json({
-      user,
-      profile
-    });
+    const [profiles] = await pool.execute('SELECT * FROM profiles WHERE user_id = ?', [user.id]);
+    res.json({ user, profile: profiles[0] || null });
   } catch (err) {
     next(err);
   }

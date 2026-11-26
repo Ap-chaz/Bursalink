@@ -27,47 +27,140 @@ const blank = {
   q: 'Tell us briefly why you need this bursary.'
 };
 
+function PasswordField({ id, value, onChange, autoComplete, placeholder }) {
+  const [show, setShow] = useState(false);
+  return (
+    <div className="pw-wrap">
+      <input
+        id={id}
+        type={show ? 'text' : 'password'}
+        autoComplete={autoComplete}
+        value={value}
+        placeholder={placeholder}
+        onChange={onChange}
+      />
+      <button
+        type="button"
+        className="pw-toggle"
+        aria-label={show ? 'Hide password' : 'Show password'}
+        onClick={() => setShow(s => !s)}
+      >
+        {show ? 'Hide' : 'Show'}
+      </button>
+    </div>
+  );
+}
+
 function Login({ done }) {
+  const [stage, setStage] = useState('creds'); // 'creds' | 'otp' | 'forgot' | 'reset'
   const [e, setE] = useState('');
+  const [pw, setPw] = useState('');
+  const [pw2, setPw2] = useState('');
   const [c, setC] = useState('');
+  const [challenge, setChallenge] = useState('');
+  const [purpose, setPurpose] = useState('login');
   const [err, setErr] = useState('');
-  const [sent, setSent] = useState(false);
+  const [ok, setOk] = useState('');
   const [loading, setLoading] = useState(false);
 
-  const sendOtp = async () => {
-    if (!e || !/\S+@\S+\.\S+/.test(e)) {
-      return setErr('Please check your email address.');
-    }
-    setLoading(true);
-    setErr('');
-    try {
-      await ad.sendCode(e);
-      setSent(true);
-    } catch (x) {
-      setErr(x.message || 'Failed to send verification code.');
-    } finally {
-      setLoading(false);
-    }
-  };
+  const loadAll = () =>
+    Promise.all([
+      ad.loadBursaries(),
+      ad.loadApplications(),
+      ad.loadAreaRequests(),
+      ad.loadAudit()
+    ]);
 
   const go = async ev => {
     ev.preventDefault();
-    if (!sent) {
-      return sendOtp();
-    }
-    setLoading(true);
     setErr('');
+    setOk('');
+
+    if (stage === 'creds') {
+      if (!e || !/\S+@\S+\.\S+/.test(e)) return setErr('Please enter a valid work email.');
+      if (!pw) return setErr('Password is required.');
+      setLoading(true);
+      try {
+        const res = await ad.login(e, pw);
+        if (res?.step === 'otp') {
+          setChallenge(res.challenge);
+          setPurpose(res.purpose || 'login');
+          setC('');
+          setStage('otp');
+        } else {
+          await loadAll();
+          done();
+        }
+      } catch (x) {
+        setErr(x.message || 'Invalid email or password.');
+      } finally {
+        setLoading(false);
+      }
+      return;
+    }
+
+    if (stage === 'otp') {
+      setLoading(true);
+      try {
+        await ad.verifyOtp({ challenge, code: c, purpose });
+        await loadAll();
+        done();
+      } catch (x) {
+        setErr(x.message || 'Invalid or expired verification code.');
+      } finally {
+        setLoading(false);
+      }
+      return;
+    }
+
+    if (stage === 'forgot') {
+      if (!e || !/\S+@\S+\.\S+/.test(e)) return setErr('Please enter a valid work email.');
+      setLoading(true);
+      try {
+        const res = await ad.forgotPassword(e);
+        setChallenge(res.challenge);
+        setC('');
+        setPw('');
+        setPw2('');
+        setStage('reset');
+        setOk('If an account exists for that email, a 6-digit verification code has been sent.');
+      } catch (x) {
+        setErr(x.message || 'Failed to send verification code.');
+      } finally {
+        setLoading(false);
+      }
+      return;
+    }
+
+    if (stage === 'reset') {
+      if (pw !== pw2) return setErr('Passwords do not match.');
+      setLoading(true);
+      try {
+        await ad.resetPassword({ challenge, code: c, newPassword: pw });
+        setStage('creds');
+        setPw('');
+        setPw2('');
+        setC('');
+        setChallenge('');
+        setOk('Password updated. Sign in with your new password and complete 2FA verification.');
+      } catch (x) {
+        setErr(x.message || 'Could not reset password.');
+      } finally {
+        setLoading(false);
+      }
+    }
+  };
+
+  const resend = async () => {
+    setErr('');
+    setOk('');
+    setLoading(true);
     try {
-      await ad.signIn(e, c);
-      await Promise.all([
-        ad.loadBursaries(),
-        ad.loadApplications(),
-        ad.loadAreaRequests(),
-        ad.loadAudit()
-      ]);
-      done();
+      const res = await ad.resendOtp({ challenge, purpose });
+      if (res?.challenge) setChallenge(res.challenge);
+      setOk('A new 6-digit verification code has been sent.');
     } catch (x) {
-      setErr(x.message || "That code didn't match.");
+      setErr(x.message || 'Could not resend verification code.');
     } finally {
       setLoading(false);
     }
@@ -81,51 +174,147 @@ function Login({ done }) {
           <b>BursaLink</b>
         </a>
         <form className="panel" onSubmit={go}>
-          <h1>Staff sign in</h1>
-          <p className="muted">For bursary providers, committees, and administrators.</p>
-
-          <label htmlFor="ae">Work email</label>
-          <input
-            id="ae"
-            type="email"
-            autoComplete="email"
-            value={e}
-            disabled={sent}
-            placeholder="admin@bursalink.org or official email"
-            onChange={x => setE(x.target.value)}
-          />
-
-          {sent && (
+          {stage === 'creds' && (
             <>
-              <label htmlFor="ac">One-time code (demo: 123456)</label>
+              <h1>Staff sign in</h1>
+              <p className="muted">For bursary providers, committees, and administrators. Two-step verification is required.</p>
+              {ok && <p className="ok" role="status">{ok}</p>}
+
+              <label htmlFor="ae">Work email</label>
               <input
-                id="ac"
-                inputMode="numeric"
-                autoFocus
-                value={c}
-                placeholder="123456"
-                onChange={x => setC(x.target.value)}
+                id="ae"
+                type="email"
+                autoComplete="email"
+                value={e}
+                placeholder="admin@bursalink.org or official email"
+                onChange={x => setE(x.target.value)}
               />
+
+              <label htmlFor="apw">Password</label>
+              <PasswordField
+                id="apw"
+                autoComplete="current-password"
+                value={pw}
+                placeholder="Enter your staff password"
+                onChange={x => setPw(x.target.value)}
+              />
+
+              <p style={{ marginTop: '10px', marginBottom: 0 }}>
+                <a href="#" onClick={ev => { ev.preventDefault(); setStage('forgot'); setPw(''); setErr(''); setOk(''); }}>
+                  Forgot password?
+                </a>
+              </p>
+
+              {err && <p className="err" role="alert" style={{ marginTop: '12px' }}>{err}</p>}
+
+              <div style={{ display: 'flex', gap: '10px', alignItems: 'center', marginTop: '16px', flexWrap: 'wrap' }}>
+                <button className="btn" type="submit" disabled={loading || !e.trim() || !pw}>
+                  {loading ? 'Checking...' : 'Continue to verification'}
+                </button>
+              </div>
             </>
           )}
 
-          {err && <p className="err" role="alert" style={{ marginTop: '12px' }}>{err}</p>}
+          {stage === 'otp' && (
+            <>
+              <h1>Two-factor verification</h1>
+              <p className="muted">Enter the 6-digit verification code sent to <b>{e}</b>.</p>
+              {ok && <p className="ok" role="status">{ok}</p>}
 
-          <div style={{ display: 'flex', gap: '10px', alignItems: 'center', marginTop: '16px', flexWrap: 'wrap' }}>
-            <button className="btn" type="submit" disabled={loading}>
-              {loading ? 'Please wait...' : sent ? 'Sign in' : 'Send code'}
-            </button>
+              <label htmlFor="ac">6-digit verification code</label>
+              <input
+                id="ac"
+                inputMode="numeric"
+                autoComplete="one-time-code"
+                maxLength={6}
+                autoFocus
+                value={c}
+                onChange={x => setC(x.target.value.replace(/\D/g, '').slice(0, 6))}
+              />
 
-            {sent && (
-              <button
-                type="button"
-                className="btn2"
-                onClick={() => { setSent(false); setC(''); setErr(''); }}
-              >
-                Use a different email
-              </button>
-            )}
-          </div>
+              {err && <p className="err" role="alert" style={{ marginTop: '12px' }}>{err}</p>}
+
+              <div style={{ display: 'flex', gap: '10px', alignItems: 'center', marginTop: '16px', flexWrap: 'wrap' }}>
+                <button className="btn" type="submit" disabled={loading || c.length !== 6}>
+                  {loading ? 'Verifying...' : 'Verify & sign in'}
+                </button>
+                <button type="button" className="btn2" disabled={loading} onClick={resend}>
+                  Resend code
+                </button>
+                <button
+                  type="button"
+                  className="btn2"
+                  disabled={loading}
+                  onClick={() => { setStage('creds'); setC(''); setErr(''); setOk(''); }}
+                >
+                  Back
+                </button>
+              </div>
+            </>
+          )}
+
+          {(stage === 'forgot' || stage === 'reset') && (
+            <>
+              <h1>{stage === 'forgot' ? 'Reset staff password' : 'Enter code & new password'}</h1>
+              <p className="muted">
+                {stage === 'forgot'
+                  ? 'Enter your work email address to receive a 6-digit reset code.'
+                  : 'Check your inbox for the 6-digit code and set a strong new password.'}
+              </p>
+              {ok && <p className="ok" role="status">{ok}</p>}
+
+              {stage === 'forgot' ? (
+                <>
+                  <label htmlFor="afe">Work email</label>
+                  <input
+                    id="afe"
+                    type="email"
+                    autoComplete="email"
+                    value={e}
+                    onChange={x => setE(x.target.value)}
+                  />
+                </>
+              ) : (
+                <>
+                  <label htmlFor="arc">6-digit verification code</label>
+                  <input
+                    id="arc"
+                    inputMode="numeric"
+                    autoComplete="one-time-code"
+                    maxLength={6}
+                    autoFocus
+                    value={c}
+                    onChange={x => setC(x.target.value.replace(/\D/g, '').slice(0, 6))}
+                  />
+                  <label htmlFor="anp">New password</label>
+                  <PasswordField id="anp" autoComplete="new-password" value={pw} onChange={x => setPw(x.target.value)} />
+                  <small className="hint">At least 10 characters, including letters and a number or symbol.</small>
+                  <label htmlFor="anp2">Confirm new password</label>
+                  <PasswordField id="anp2" autoComplete="new-password" value={pw2} onChange={x => setPw2(x.target.value)} />
+                </>
+              )}
+
+              {err && <p className="err" role="alert" style={{ marginTop: '12px' }}>{err}</p>}
+
+              <div style={{ display: 'flex', gap: '10px', alignItems: 'center', marginTop: '16px', flexWrap: 'wrap' }}>
+                <button
+                  className="btn"
+                  type="submit"
+                  disabled={loading || (stage === 'forgot' ? !e.trim() : c.length !== 6 || !pw || !pw2)}
+                >
+                  {loading ? 'Please wait...' : stage === 'forgot' ? 'Send reset code' : 'Update password'}
+                </button>
+                <button
+                  type="button"
+                  className="btn2"
+                  disabled={loading}
+                  onClick={() => { setStage('creds'); setC(''); setPw(''); setPw2(''); setErr(''); setOk(''); }}
+                >
+                  Back to sign in
+                </button>
+              </div>
+            </>
+          )}
 
           <p className="muted" style={{ marginTop: '20px', marginBottom: '0' }}>
             <a href="#/">Back to the website</a>
@@ -151,18 +340,65 @@ function formatAudit(x) {
   }
 
   switch (x.action) {
+    case 'USER_REGISTERED':
+      label = 'Student Registered';
+      desc = d?.email ? `${d.email} created an account` : 'New student account';
+      break;
+    case 'REGISTER_REJECTED':
+      label = 'Sign-up Rejected';
+      isWarn = true;
+      desc = d?.email ? `Sign-up blocked for existing/staff email ${d.email}` : 'Sign-up rejected';
+      break;
     case 'USER_LOGIN_SUCCESS':
-      label = 'Staff Login';
-      desc = d?.email ? `${d.email} signed in successfully` : 'User authenticated';
+      label = 'Login Success';
+      desc = d?.email ? `${d.email} (${d.role || 'user'}) signed in` : 'User authenticated';
+      break;
+    case 'LOGIN_FAILED':
+      label = 'Login Failed';
+      isWarn = true;
+      desc = d?.email ? `Failed login for ${d.email} (${d.reason || 'invalid credentials'})` : 'Failed login attempt';
+      break;
+    case 'LOGIN_BLOCKED_LOCKED':
+    case 'ACCOUNT_LOCKED':
+      label = 'Account Locked';
+      isWarn = true;
+      desc = d?.email ? `${d.email} temporarily locked after failed attempts` : 'Account locked';
       break;
     case 'OTP_REQUEST':
       label = 'OTP Sent';
-      desc = d?.email ? `Verification code sent to ${d.email}` : 'Verification code requested';
+      desc = d?.email ? `Verification code (${d.purpose || 'auth'}) sent to ${d.email}` : 'Verification code requested';
       break;
     case 'OTP_VERIFY_FAILED':
-      label = 'Login Failed';
+      label = 'OTP Failed';
       isWarn = true;
-      desc = d?.email ? `Verification failed for ${d.email}` : 'Invalid code entered';
+      desc = d?.purpose ? `Invalid or expired code (${d.purpose})` : 'Invalid code entered';
+      break;
+    case 'PASSWORD_RESET':
+      label = 'Password Reset';
+      desc = d?.email ? `${d.email} reset password` : 'Password reset via OTP';
+      break;
+    case 'PASSWORD_CHANGED':
+      label = 'Password Changed';
+      desc = 'User updated password (other sessions revoked)';
+      break;
+    case 'PASSWORD_CHANGE_FAILED':
+      label = 'Password Check Failed';
+      isWarn = true;
+      desc = 'Incorrect current password on password change';
+      break;
+    case 'ACCOUNT_DELETED':
+      label = 'Account Deleted';
+      isWarn = true;
+      desc = d?.email ? `${d.email} deleted account` : 'Account deleted';
+      break;
+    case 'ACCOUNT_DELETE_FAILED':
+      label = 'Delete Failed';
+      isWarn = true;
+      desc = 'Incorrect password supplied for account deletion';
+      break;
+    case 'ADMIN_PROVISIONED':
+      label = 'Admin Provisioned';
+      desc = d?.email ? `Admin account configured for ${d.email}` : 'Admin provisioned';
       break;
     case 'USER_LOGOUT':
       label = 'User Sign Out';
@@ -610,18 +846,89 @@ function Audit({ log }) {
   );
 }
 
+function StaffSecurity() {
+  const [curPw, setCurPw] = useState('');
+  const [newPw, setNewPw] = useState('');
+  const [newPw2, setNewPw2] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+  const [ok, setOk] = useState('');
+
+  const submit = async ev => {
+    ev.preventDefault();
+    setErr('');
+    setOk('');
+    if (newPw !== newPw2) return setErr('New passwords do not match.');
+    setBusy(true);
+    try {
+      await ad.changePassword({ currentPassword: curPw, newPassword: newPw });
+      setCurPw('');
+      setNewPw('');
+      setNewPw2('');
+      setOk('Staff password updated. Any other active sessions have been signed out.');
+    } catch (x) {
+      setErr(x.message || 'Could not update password.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <form className="panel" style={{ maxWidth: '520px' }} onSubmit={submit}>
+      <h2>Account security</h2>
+      <p className="muted">Update your staff password. You will still verify with a 6-digit email code when signing in.</p>
+      <label htmlFor="adm-cur">Current password</label>
+      <PasswordField id="adm-cur" autoComplete="current-password" value={curPw} onChange={e => setCurPw(e.target.value)} />
+      <label htmlFor="adm-new">New password</label>
+      <PasswordField id="adm-new" autoComplete="new-password" value={newPw} onChange={e => setNewPw(e.target.value)} />
+      <small className="hint">At least 10 characters, including letters and a number or symbol.</small>
+      <label htmlFor="adm-new2">Confirm new password</label>
+      <PasswordField id="adm-new2" autoComplete="new-password" value={newPw2} onChange={e => setNewPw2(e.target.value)} />
+      {err && <p className="err" role="alert" style={{ marginTop: '12px' }}>{err}</p>}
+      {ok && <p className="ok" role="status" style={{ marginTop: '12px' }}>{ok}</p>}
+      <div className="acts">
+        <button className="btn" type="submit" disabled={busy || !curPw || !newPw || !newPw2}>
+          {busy ? 'Updating...' : 'Update staff password'}
+        </button>
+      </div>
+    </form>
+  );
+}
+
 export default function Admin() {
   const [, bump] = useReducer(x => x + 1, 0);
   const [tab, setTab] = useState('overview');
+  const [checking, setChecking] = useState(true);
 
   useEffect(() => {
-    if (ad.session()) {
-      ad.loadBursaries().then(bump);
-      ad.loadApplications().then(bump);
-      ad.loadAreaRequests().then(bump);
-      ad.loadAudit().then(bump);
-    }
+    let alive = true;
+    (async () => {
+      const user = await ad.checkSession();
+      if (user) {
+        await Promise.all([
+          ad.loadBursaries(),
+          ad.loadApplications(),
+          ad.loadAreaRequests(),
+          ad.loadAudit()
+        ]);
+      }
+      if (alive) {
+        setChecking(false);
+        bump();
+      }
+    })();
+    return () => { alive = false; };
   }, []);
+
+  if (checking) {
+    return (
+      <div className="adm">
+        <div className="abody narrow">
+          <div className="panel"><p className="muted">Checking staff session...</p></div>
+        </div>
+      </div>
+    );
+  }
 
   if (!ad.session()) {
     return <Login done={bump} />;
@@ -639,7 +946,8 @@ export default function Admin() {
     ['bursaries', 'Bursaries'],
     ['applications', 'Applications' + (pend ? ` (${pend})` : '')],
     ['requests', 'Area requests' + (pendArea ? ` (${pendArea})` : '')],
-    ['audit', 'Audit log']
+    ['audit', 'Audit log'],
+    ['security', 'Security']
   ];
 
   const handleSignOut = async () => {
@@ -674,6 +982,7 @@ export default function Admin() {
         {tab === 'applications' && <Applications apps={apps} bump={bump} />}
         {tab === 'requests' && <Requests areaReqs={areaReqs} bump={bump} />}
         {tab === 'audit' && <Audit log={log} />}
+        {tab === 'security' && <StaffSecurity />}
       </main>
     </div>
   );

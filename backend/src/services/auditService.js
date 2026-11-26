@@ -2,10 +2,11 @@ import pool from '../config/db.js';
 
 export async function logAudit(action, { userId = null, details = null, req = null } = {}) {
   try {
-    const ip = req ? (req.headers['x-forwarded-for'] || req.socket?.remoteAddress || 'unknown') : null;
+    // req.ip honours the configured trust-proxy setting; never trust a raw client-supplied X-Forwarded-For.
+    const ip = req ? (req.ip || req.socket?.remoteAddress || 'unknown') : null;
     const userAgent = req ? (req.headers['user-agent'] || 'unknown').slice(0, 255) : null;
 
-    await pool.query(
+    await pool.execute(
       `INSERT INTO audit_logs (user_id, action, details, ip_address, user_agent)
        VALUES (?, ?, ?, ?, ?)`,
       [

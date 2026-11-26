@@ -26,6 +26,7 @@ export default function App(){
   api.syncBursaries().then(data=>{
    if(Array.isArray(data))setBursaries([...data])
   })
+  api.checkSession().then(()=>setS(api.load()))
  },[])
 
  // Keep notifications, application statuses and committee messages live
@@ -60,7 +61,7 @@ export default function App(){
   <div className="row"><div onClick={()=>go('discover',{v:'bursary',id:b.id})}>{action(b)}</div><button className="secondary" onClick={()=>act(()=>api.toggleSave(b.id))}>{s.saved.includes(b.id)?'★ Saved':'☆ Save'}</button></div></div>
  // ---- Auth & onboarding
  if(intro<3)return <Site lang={l} toggle={()=>act(()=>api.updateProfile({lang:l==='en'?'sw':'en'}))} start={m=>{setMode(m==='register'?'register':'signin');setIntro(3)}}/>
- if(!s.user)return <div className="app">{bar()}<main className="narrow"><Login {...{act,err,t,mode,setMode}}/></main></div>
+ if(!s.user)return <div className="app">{bar()}<main className="narrow"><Login {...{act,err,clearErr:()=>setErr(''),t,mode,setMode}}/></main></div>
  if(!area)return <div className="app">{bar()}<main className="narrow"><AreaForm act={act} err={err} t={t} onCancel={()=>setIntro(0)}/></main></div>
  // ---- Screens
  const unread=s.notifs.filter(n=>!n.read).length
@@ -72,20 +73,140 @@ export default function App(){
  return <div className="app">{bar(true,unread)}<main>{body}</main>
  <nav className="tabs" aria-label="Bottom Navigation">{['home','discover','applications','profile'].map(k=><button key={k} className={tab===k?'on':''} onClick={()=>go(k)} aria-label={t(k)}><span className="tab-icon-wrap"><TabIcon name={k} active={tab===k}/>{k==='profile'&&unread>0&&<span className="tab-dot"/>}</span><span className="tab-lbl">{t(k)}</span></button>)}</nav></div>}
 function Welcome({intro,setIntro,t}){const P=['Find bursaries made for you.','Apply from your phone. It is free.','Track every step until a decision.'];return <div className="card"><h2>{P[intro]}</h2><p>{intro+1} / 3</p><button className="primary" onClick={()=>setIntro(intro+1)}>{t('cont')}</button><p/><button className="secondary" onClick={()=>setIntro(3)}>Skip</button></div>}
-function Login({act,err,t,mode,setMode}){const reg=mode==='register',[e,setE]=useState(''),[n,setN]=useState(''),[c,setC]=useState(''),[agree,setAgree]=useState(false),[sent,setSent]=useState(false)
- const reset=m=>{setMode(m);setSent(false);setC('')}
- const submit=async ev=>{ev.preventDefault();if(!sent){setSent(await act(()=>api.sendCode(e)));return}
-  if(await act(()=>api.verifyCode(e,c))&&reg&&n.trim())await act(()=>api.updateProfile({name:n.trim()}))}
+function PasswordInput({id,value,onChange,autoComplete,placeholder,disabled}){
+ const [show,setShow]=useState(false)
+ return <div className="pw-wrap">
+  <input id={id} type={show?'text':'password'} autoComplete={autoComplete} value={value} placeholder={placeholder} disabled={disabled} onChange={onChange}/>
+  <button type="button" className="pw-toggle" aria-label={show?'Hide password':'Show password'} onClick={()=>setShow(s=>!s)}>{show?'Hide':'Show'}</button>
+ </div>
+}
+function Login({act,err,clearErr,t,mode,setMode}){
+ const reg=mode==='register'
+ const [stage,setStage]=useState('form') // 'form' | 'otp' | 'forgot' | 'reset'
+ const [e,setE]=useState(''),[n,setN]=useState(''),[pw,setPw]=useState(''),[pw2,setPw2]=useState(''),[agree,setAgree]=useState(false)
+ const [challenge,setChallenge]=useState(''),[purpose,setPurpose]=useState('verify_email'),[code,setCode]=useState('')
+ const [localErr,setLocalErr]=useState(''),[okMsg,setOkMsg]=useState(''),[busy,setBusy]=useState(false)
+ const resetTab=m=>{setMode(m);setStage('form');setPw('');setPw2('');setCode('');setChallenge('');setLocalErr('');setOkMsg('');clearErr()}
+ const msgErr=localErr||err
+
+ const submit=async ev=>{
+  ev.preventDefault()
+  setLocalErr('');setOkMsg('');clearErr()
+  if(stage==='form'){
+   if(reg){
+    if(pw!==pw2){setLocalErr('Passwords do not match.');return}
+    setBusy(true)
+    try{
+     const res=await api.register({name:n,email:e,password:pw})
+     setChallenge(res.challenge);setPurpose(res.purpose||'verify_email');setStage('otp')
+    }catch(x){setLocalErr(x.message)}finally{setBusy(false)}
+   }else{
+    setBusy(true)
+    let res=null
+    try{
+     await act(async()=>{res=await api.login({email:e,password:pw})})
+     if(res?.step==='otp'){setChallenge(res.challenge);setPurpose(res.purpose||'login');setStage('otp')}
+    }finally{setBusy(false)}
+   }
+   return
+  }
+  if(stage==='otp'){
+   setBusy(true)
+   try{
+    await act(()=>api.verifyOtp({challenge,code,purpose}))
+   }finally{setBusy(false)}
+   return
+  }
+  if(stage==='forgot'){
+   setBusy(true)
+   try{
+    const res=await api.forgotPassword(e)
+    setChallenge(res.challenge);setCode('');setPw('');setPw2('');setStage('reset')
+    setOkMsg('If an account exists for that email, a 6-digit verification code has been sent.')
+   }catch(x){setLocalErr(x.message)}finally{setBusy(false)}
+   return
+  }
+  if(stage==='reset'){
+   if(pw!==pw2){setLocalErr('Passwords do not match.');return}
+   setBusy(true)
+   try{
+    await api.resetPassword({challenge,code,newPassword:pw})
+    setMode('signin');setStage('form');setPw('');setPw2('');setCode('');setChallenge('')
+    setOkMsg('Password updated. Please sign in with your new password.')
+   }catch(x){setLocalErr(x.message)}finally{setBusy(false)}
+  }
+ }
+
+ const resend=async()=>{
+  setLocalErr('');setOkMsg('');setBusy(true)
+  try{
+   const res=await api.resendOtp({challenge,purpose})
+   if(res?.challenge)setChallenge(res.challenge)
+   setOkMsg('A new 6-digit code has been sent to your email.')
+  }catch(x){setLocalErr(x.message)}finally{setBusy(false)}
+ }
+
+ if(stage==='otp'){
+  return <form className="card auth" onSubmit={submit}>
+   <h1>{purpose==='verify_email'?'Verify your email':'Confirm your sign-in'}</h1>
+   <p className="muted">Enter the 6-digit code sent to <b>{e}</b>.</p>
+   {okMsg&&<p className="ok" role="status">{okMsg}</p>}
+   <label htmlFor="cd">6-digit verification code</label>
+   <input id="cd" autoComplete="one-time-code" inputMode="numeric" maxLength={6} autoFocus value={code} onChange={x=>setCode(x.target.value.replace(/\D/g,'').slice(0,6))}/>
+   {msgErr&&<p className="err" role="alert">{msgErr}</p>}
+   <button className="primary" type="submit" disabled={busy||code.length!==6}>{busy?'Verifying...':'Verify & continue'}</button>
+   <button type="button" className="secondary" disabled={busy} onClick={resend}>Resend code</button>
+   <button type="button" className="secondary" disabled={busy} onClick={()=>{setStage('form');setCode('');setLocalErr('');setOkMsg('');clearErr()}}>Back</button>
+  </form>
+ }
+
+ if(stage==='forgot'||stage==='reset'){
+  return <form className="card auth" onSubmit={submit}>
+   <h1>{stage==='forgot'?'Reset your password':'Enter code & new password'}</h1>
+   <p className="muted">{stage==='forgot'?'Enter your account email and we will send you a 6-digit verification code.':'Check your inbox for the 6-digit code and choose a new password.'}</p>
+   {okMsg&&<p className="ok" role="status">{okMsg}</p>}
+   {stage==='forgot'?(
+    <>
+     <label htmlFor="fe">Email</label>
+     <input id="fe" type="email" autoComplete="email" inputMode="email" value={e} onChange={x=>setE(x.target.value)}/>
+    </>
+   ):(
+    <>
+     <label htmlFor="rc">6-digit verification code</label>
+     <input id="rc" autoComplete="one-time-code" inputMode="numeric" maxLength={6} autoFocus value={code} onChange={x=>setCode(x.target.value.replace(/\D/g,'').slice(0,6))}/>
+     <label htmlFor="np">New password</label>
+     <PasswordInput id="np" autoComplete="new-password" value={pw} onChange={x=>setPw(x.target.value)}/>
+     <small className="hint">At least 10 characters, including letters and a number or symbol.</small>
+     <label htmlFor="np2">Confirm new password</label>
+     <PasswordInput id="np2" autoComplete="new-password" value={pw2} onChange={x=>setPw2(x.target.value)}/>
+    </>
+   )}
+   {msgErr&&<p className="err" role="alert">{msgErr}</p>}
+   <button className="primary" type="submit" disabled={busy||(stage==='reset'&&(code.length!==6||!pw||!pw2))||(stage==='forgot'&&!e.trim())}>
+    {busy?'Please wait...':stage==='forgot'?'Send verification code':'Update password'}
+   </button>
+   <button type="button" className="secondary" disabled={busy} onClick={()=>{setStage('form');setCode('');setPw('');setPw2('');setLocalErr('');setOkMsg('');clearErr()}}>Back to sign in</button>
+  </form>
+ }
+
  return <form className="card auth" onSubmit={submit}>
-  <div className="seg" role="tablist">{[['signin','Sign in'],['register','Register']].map(([k,l])=><button key={k} type="button" role="tab" aria-selected={mode===k} className={mode===k?'on':''} onClick={()=>reset(k)}>{l}</button>)}</div>
-  <h1>{reg?'Create your account':'Welcome back'}</h1><p className="muted">{reg?'It takes a minute and it is free.':'Enter your email and we send you a one-time code. No password needed.'}</p>
-  {reg&&<><label htmlFor="nm">Full name</label><input id="nm" autoComplete="name" value={n} disabled={sent} onChange={x=>setN(x.target.value)}/></>}
-  <label htmlFor="em">Email</label><input id="em" type="email" autoComplete="email" inputMode="email" value={e} disabled={sent} onChange={x=>setE(x.target.value)}/>{err==='email'&&<p className="err">Please check your email address.</p>}
-  {sent&&<><label htmlFor="cd">One-time code (demo: 123456)</label><input id="cd" autoComplete="one-time-code" inputMode="numeric" maxLength={6} autoFocus value={c} onChange={x=>setC(x.target.value)}/>{err==='code'&&<p className="err">{t('badcode')}</p>}</>}
-  {reg&&!sent&&<label className="check"><input type="checkbox" checked={agree} onChange={x=>setAgree(x.target.checked)}/> <span>I agree to the <a href="#/terms" target="_blank" rel="noopener">Terms & Conditions</a> and <a href="#/privacy" target="_blank" rel="noopener">Privacy Policy</a>.</span></label>}
-  <button className="primary" type="submit" disabled={!sent&&reg&&(!n.trim()||!agree)}>{sent?(reg?'Create account':'Sign in'):'Send my code'}</button>
-  {sent&&<button type="button" className="secondary" onClick={()=>setSent(false)}>Use a different email</button>}
-  <p className="muted">{reg?'Already have an account?':'New to BursaLink?'} <a href="#" onClick={ev=>{ev.preventDefault();reset(reg?'signin':'register')}}>{reg?'Sign in':'Register'}</a></p><p className="muted">{t('free')}</p></form>}
+  <div className="seg" role="tablist">{[['signin','Sign in'],['register','Register']].map(([k,l])=><button key={k} type="button" role="tab" aria-selected={mode===k} className={mode===k?'on':''} onClick={()=>resetTab(k)}>{l}</button>)}</div>
+  <h1>{reg?'Create your account':'Welcome back'}</h1><p className="muted">{reg?'It takes a minute and it is free.':'Sign in with your email and password.'}</p>
+  {okMsg&&<p className="ok" role="status">{okMsg}</p>}
+  {reg&&<><label htmlFor="nm">Full name</label><input id="nm" autoComplete="name" value={n} onChange={x=>setN(x.target.value)}/></>}
+  <label htmlFor="em">Email</label><input id="em" type="email" autoComplete="email" inputMode="email" value={e} onChange={x=>setE(x.target.value)}/>
+  <label htmlFor="pw">Password</label>
+  <PasswordInput id="pw" autoComplete={reg?'new-password':'current-password'} value={pw} onChange={x=>setPw(x.target.value)}/>
+  {reg&&<small className="hint">At least 10 characters, including letters and a number or symbol.</small>}
+  {reg&&<><label htmlFor="pw2">Confirm password</label><PasswordInput id="pw2" autoComplete="new-password" value={pw2} onChange={x=>setPw2(x.target.value)}/></>}
+  {!reg&&<p style={{marginTop:'10px'}}><a href="#" onClick={ev=>{ev.preventDefault();setStage('forgot');setPw('');setLocalErr('');setOkMsg('');clearErr()}}>Forgot password?</a></p>}
+  {reg&&<label className="check"><input type="checkbox" checked={agree} onChange={x=>setAgree(x.target.checked)}/> <span>I agree to the <a href="#/terms" target="_blank" rel="noopener">Terms & Conditions</a> and <a href="#/privacy" target="_blank" rel="noopener">Privacy Policy</a>.</span></label>}
+  {msgErr&&<p className="err" role="alert">{msgErr}</p>}
+  <button className="primary" type="submit" disabled={busy||(reg&&(!n.trim()||!e.trim()||!pw||!pw2||!agree))||(!reg&&(!e.trim()||!pw))}>
+   {busy?'Please wait...':reg?'Create account':'Sign in'}
+  </button>
+  <p className="muted">{reg?'Already have an account?':'New to BursaLink?'} <a href="#" onClick={ev=>{ev.preventDefault();resetTab(reg?'signin':'register')}}>{reg?'Sign in':'Register'}</a></p><p className="muted">{t('free')}</p></form>
+}
 function AreaForm({act,err,t,onCancel}){const [co,setCo]=useState(''),[cn,setCn]=useState(''),[w,setW]=useState(''),[ok,setOk]=useState(false)
  return <div className="card">{onCancel&&<button type="button" className="secondary" style={{width:'auto',marginBottom:'14px',fontSize:'13px',padding:'6px 14px'}} onClick={onCancel}>← Back to Homepage</button>}<h2>Where do you live?</h2><label>County</label><select value={co} onChange={e=>{setCo(e.target.value);setCn('');setW('')}}><option value="">Choose</option>{Object.keys(GEO).map(x=><option key={x}>{x}</option>)}</select>
  <label>Constituency</label><select value={cn} disabled={!co} onChange={e=>{setCn(e.target.value);setW('')}}><option value="">Choose</option>{co&&Object.keys(GEO[co]).map(x=><option key={x}>{x}</option>)}</select>
@@ -153,16 +274,68 @@ function Notifs({s,t,act,go}){const days=[...new Set(s.notifs.map(n=>n.at.slice(
  {days.map(d=><div key={d}><h3>{d}</h3>{s.notifs.filter(n=>n.at.startsWith(d)).map(n=><div className="card" key={n.id} onClick={async()=>{await act(()=>api.markRead(n.id));n.go&&go('applications',{v:n.go.view,id:n.go.id})}}>{!n.read&&'● '}{n.text}</div>)}</div>)}{!s.notifs.length&&<p>No notifications yet.</p>}</>}
 function Profile({s,t,act,go,err,home}){const p=s.profile,pick=q=>({name:q.name||'',phone:q.phone||'',school:q.school||'',level:q.level||'',year:q.year||'',idNo:q.idNo||'',guardian:q.guardian||'',saver:!!q.saver,notify:q.notify})
  const [d,setD]=useState(()=>pick(p)),[saved,setSaved]=useState(false),[req,setReq]=useState(false),[area,setArea]=useState(''),[why,setWhy]=useState('')
+ const [curPw,setCurPw]=useState(''),[newPw,setNewPw]=useState(''),[newPw2,setNewPw2]=useState(''),[pwBusy,setPwBusy]=useState(false),[pwErr,setPwErr]=useState(''),[pwOk,setPwOk]=useState('')
+ const [delOpen,setDelOpen]=useState(false),[delPw,setDelPw]=useState(''),[delBusy,setDelBusy]=useState(false),[delErr,setDelErr]=useState('')
  const dirty=JSON.stringify(d)!==JSON.stringify(pick(p)),pct=completion(d),ch=patch=>{setD({...d,...patch});setSaved(false)}
  const F=(k,label,extra={})=><><label htmlFor={'f-'+k}>{label}</label><input id={'f-'+k} value={d[k]} onChange={e=>ch({[k]:e.target.value})} {...extra}/></>
  const save=async ev=>{ev.preventDefault();if(await act(()=>api.updateProfile(d)))setSaved(true)}
- return <form onSubmit={save}><h1>{t('profile')}</h1><div className="card"><div className="bar"><i style={{width:pct+'%'}}/></div><p>{pct}% complete</p></div>
+ const submitPw=async ev=>{
+  ev.preventDefault();setPwErr('');setPwOk('')
+  if(newPw!==newPw2){setPwErr('New passwords do not match.');return}
+  setPwBusy(true)
+  try{
+   await api.changePassword({currentPassword:curPw,newPassword:newPw})
+   setCurPw('');setNewPw('');setNewPw2('')
+   setPwOk('Password updated. All other sessions have been signed out.')
+  }catch(x){setPwErr(x.message)}finally{setPwBusy(false)}
+ }
+ const confirmDelete=async()=>{
+  setDelErr('');setDelBusy(true)
+  try{
+   await api.deleteAccount(delPw)
+   await act(async()=>{})
+   home()
+  }catch(x){setDelErr(x.message)}finally{setDelBusy(false)}
+ }
+ return <>
+ <form onSubmit={save}><h1>{t('profile')}</h1><div className="card"><div className="bar"><i style={{width:pct+'%'}}/></div><p>{pct}% complete</p></div>
  {F('name','Full name')}{F('phone','Phone (for later)',{inputMode:'tel'})}{F('school','School or college')}<label htmlFor="f-level">Education level</label><select id="f-level" value={d.level} onChange={e=>ch({level:e.target.value})}><option value="">Choose</option><option>primary</option><option>secondary</option><option>university</option></select>
  {F('year','Class or year')}{F('idNo','ID or birth certificate number')}{F('guardian','Guardian name and phone')}
  <label className="check"><input type="checkbox" checked={d.saver} onChange={e=>ch({saver:e.target.checked})}/> Data-saving mode (skips image compression and photos)</label>
  {['status','deadline','match'].map(k=><label key={k} className="check"><input type="checkbox" checked={d.notify[k]} onChange={e=>ch({notify:{...d.notify,[k]:e.target.checked}})}/> Notify me: {k}</label>)}
  <button className="primary" type="submit" disabled={!dirty}>Save profile</button>{dirty&&<p className="muted">You have unsaved changes.</p>}
- {saved&&!dirty&&<div className="card accent" role="status"><b>Profile saved.</b>{pct===100?<><p>Your profile is complete. You are ready to apply.</p><button type="button" className="primary" onClick={()=>go('discover')}>Find bursaries</button></>:<p>Your profile is {pct}% complete. Fill in the rest to apply faster.</p>}</div>}
+ {saved&&!dirty&&<div className="card accent" role="status"><b>Profile saved.</b>{pct===100?<><p>Your profile is complete. You are ready to apply.</p><button type="button" className="primary" onClick={()=>go('discover')}>Find bursaries</button></>:<p>Your profile is {pct}% complete. Fill in the rest to apply faster.</p>}</div>}</form>
+
+ <form className="card" onSubmit={submitPw}>
+  <b>Password & Security</b>
+  <label htmlFor="cp-cur">Current password</label>
+  <PasswordInput id="cp-cur" autoComplete="current-password" value={curPw} onChange={e=>setCurPw(e.target.value)}/>
+  <label htmlFor="cp-new">New password</label>
+  <PasswordInput id="cp-new" autoComplete="new-password" value={newPw} onChange={e=>setNewPw(e.target.value)}/>
+  <small className="hint">At least 10 characters, including letters and a number or symbol.</small>
+  <label htmlFor="cp-new2">Confirm new password</label>
+  <PasswordInput id="cp-new2" autoComplete="new-password" value={newPw2} onChange={e=>setNewPw2(e.target.value)}/>
+  {pwErr&&<p className="err" role="alert">{pwErr}</p>}
+  {pwOk&&<p className="ok" role="status">{pwOk}</p>}
+  <button className="primary" type="submit" disabled={pwBusy||!curPw||!newPw||!newPw2}>{pwBusy?'Updating...':'Change password'}</button>
+ </form>
+
  <div className="card"><small>Your area</small><p><b>{p.area.county} / {p.area.constituency} / {p.area.ward}</b></p><p className="muted">This is locked. To change it, visit your ward or constituency office and an administrator must approve it.</p>{s.areaReq?<p className="badge">Request pending</p>:req?<><label htmlFor="na">New ward</label><input id="na" value={area} onChange={e=>setArea(e.target.value)}/><label htmlFor="nr">Reason</label><input id="nr" value={why} onChange={e=>setWhy(e.target.value)}/><button type="button" className="primary" disabled={!area||!why} onClick={()=>act(()=>api.requestAreaChange(area,why))}>Send request</button></>:<button type="button" className="secondary" onClick={()=>setReq(true)}>Request an area change</button>}</div>
  <div className="card"><b>Help</b><p>Applying is always free. BursaLink never asks for money. If someone asks you to pay, report it.</p><button type="button" className="secondary" onClick={()=>alert('Thank you. Reporting needs your backend.')}>Report a suspicious request</button></div>
- <button type="button" className="secondary" onClick={()=>act(()=>api.logout()).then(home)}>Log out</button><p/><button type="button" className="secondary" onClick={()=>confirm('Delete your account and data?')&&act(()=>api.deleteAccount()).then(home)}>Delete account</button>{err&&<p className="err">{err}</p>}</form>}
+ <button type="button" className="secondary" onClick={()=>act(()=>api.logout()).then(home)}>Log out</button><p/>
+ {!delOpen?(
+  <button type="button" className="secondary" onClick={()=>{setDelOpen(true);setDelPw('');setDelErr('')}}>Delete account</button>
+ ):(
+  <div className="card">
+   <b>Confirm account deletion</b>
+   <p className="muted">Enter your current password to permanently delete your account and personal data.</p>
+   <label htmlFor="del-pw">Current password</label>
+   <PasswordInput id="del-pw" autoComplete="current-password" value={delPw} onChange={e=>setDelPw(e.target.value)}/>
+   {delErr&&<p className="err" role="alert">{delErr}</p>}
+   <div className="row">
+    <button type="button" className="secondary" disabled={delBusy} onClick={()=>{setDelOpen(false);setDelPw('');setDelErr('')}}>Cancel</button>
+    <button type="button" className="primary" disabled={delBusy||!delPw} onClick={confirmDelete}>{delBusy?'Deleting...':'Confirm delete'}</button>
+   </div>
+  </div>
+ )}
+ {err&&<p className="err">{err}</p>}</>}

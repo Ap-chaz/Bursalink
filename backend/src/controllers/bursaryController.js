@@ -7,7 +7,7 @@ export async function listBursaries(req, res, next) {
       ? 'SELECT * FROM bursaries ORDER BY opens DESC'
       : "SELECT * FROM bursaries WHERE status != 'draft' ORDER BY opens DESC";
 
-    const [rows] = await pool.query(query);
+    const [rows] = await pool.execute(query);
 
     // Parse JSON columns
     const bursaries = rows.map(b => ({
@@ -28,7 +28,7 @@ export async function listBursaries(req, res, next) {
 export async function getBursaryById(req, res, next) {
   try {
     const { id } = req.params;
-    const [rows] = await pool.query('SELECT * FROM bursaries WHERE id = ?', [id]);
+    const [rows] = await pool.execute('SELECT * FROM bursaries WHERE id = ?', [id]);
 
     if (rows.length === 0) {
       return res.status(404).json({ error: 'Bursary not found' });
@@ -77,7 +77,7 @@ export async function createBursary(req, res, next) {
       return res.status(400).json({ error: 'Missing required bursary fields' });
     }
 
-    await pool.query(
+    await pool.execute(
       `INSERT INTO bursaries (id, title, org, type, place, min, max, levels, opens, closes, status, docs, \`desc\`, how, contact, q)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
@@ -140,7 +140,7 @@ export async function updateBursary(req, res, next) {
     }
 
     values.push(id);
-    const [result] = await pool.query(`UPDATE bursaries SET ${fields.join(', ')} WHERE id = ?`, values);
+    const [result] = await pool.execute(`UPDATE bursaries SET ${fields.join(', ')} WHERE id = ?`, values);
 
     if (result.affectedRows === 0) {
       return res.status(404).json({ error: 'Bursary not found' });

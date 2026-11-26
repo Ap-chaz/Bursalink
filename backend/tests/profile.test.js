@@ -1,34 +1,34 @@
+import './setup.js';
 import { test, describe, after } from 'node:test';
 import assert from 'node:assert/strict';
 import request from 'supertest';
 import app from '../src/app.js';
 import { closePool } from '../src/config/db.js';
+import { CSRF, createVerifiedStudent, ensureAdminAndLogin } from './helpers.js';
 
 describe('Profile & Area Management Endpoints', () => {
-  let studentToken = '';
-  let adminToken = '';
+  let studentCookie = '';
+  let studentEmail = '';
+  let adminCookie = '';
   let areaReqId = null;
 
   after(async () => {
     await closePool();
   });
 
-  test('Setup tokens', async () => {
-    const studentRes = await request(app)
-      .post('/api/auth/verify-code')
-      .send({ email: `profile_student_${Date.now()}@example.org`, code: '123456' });
-    studentToken = studentRes.body.token;
+  test('Setup student and admin sessions', async () => {
+    const stu = await createVerifiedStudent(app);
+    studentCookie = stu.cookie;
+    studentEmail = stu.email;
 
-    const adminRes = await request(app)
-      .post('/api/auth/verify-code')
-      .send({ email: 'admin@bursalink.org', code: '123456' });
-    adminToken = adminRes.body.token;
+    const adm = await ensureAdminAndLogin(app);
+    adminCookie = adm.cookie;
   });
 
   test('GET /api/profile returns student profile', async () => {
     const res = await request(app)
       .get('/api/profile')
-      .set('Authorization', `Bearer ${studentToken}`);
+      .set('Cookie', studentCookie);
 
     assert.equal(res.status, 200);
     assert.ok(res.body.profile);
@@ -51,16 +51,16 @@ describe('Profile & Area Management Endpoints', () => {
 
     const res = await request(app)
       .patch('/api/profile')
-      .set('Authorization', `Bearer ${studentToken}`)
+      .set(CSRF)
+      .set('Cookie', studentCookie)
       .send(patch);
 
     assert.equal(res.status, 200);
     assert.equal(res.body.success, true);
 
-    // Verify GET profile reflects the patch
     const getRes = await request(app)
       .get('/api/profile')
-      .set('Authorization', `Bearer ${studentToken}`);
+      .set('Cookie', studentCookie);
 
     assert.equal(getRes.body.profile.name, 'John Doe');
     assert.equal(getRes.body.profile.school, 'Alliance High School');
@@ -76,16 +76,17 @@ describe('Profile & Area Management Endpoints', () => {
 
     const res = await request(app)
       .post('/api/profile/area')
-      .set('Authorization', `Bearer ${studentToken}`)
+      .set(CSRF)
+      .set('Cookie', studentCookie)
       .send({ area });
 
     assert.equal(res.status, 200);
     assert.equal(res.body.success, true);
 
-    // Trying to register area again must fail because it's locked
     const retryRes = await request(app)
       .post('/api/profile/area')
-      .set('Authorization', `Bearer ${studentToken}`)
+      .set(CSRF)
+      .set('Cookie', studentCookie)
       .send({ area: { county: 'Kiambu' } });
 
     assert.equal(retryRes.status, 400);
@@ -100,7 +101,8 @@ describe('Profile & Area Management Endpoints', () => {
 
     const res = await request(app)
       .post('/api/profile/area-change')
-      .set('Authorization', `Bearer ${studentToken}`)
+      .set(CSRF)
+      .set('Cookie', studentCookie)
       .send({
         area: targetArea,
         reason: 'Family relocated to Ruiru, Kiambu'
@@ -109,41 +111,39 @@ describe('Profile & Area Management Endpoints', () => {
     assert.equal(res.status, 200);
     assert.equal(res.body.success, true);
 
-    // Duplicate pending request should fail
     const dupRes = await request(app)
       .post('/api/profile/area-change')
-      .set('Authorization', `Bearer ${studentToken}`)
+      .set(CSRF)
+      .set('Cookie', studentCookie)
       .send({ area: targetArea, reason: 'Another reason' });
 
     assert.equal(dupRes.status, 400);
   });
 
   test('Admin reviews and approves area change', async () => {
-    // 1. Admin lists requests
     const listRes = await request(app)
       .get('/api/profile/admin/area-requests')
-      .set('Authorization', `Bearer ${adminToken}`);
+      .set('Cookie', adminCookie);
 
     assert.equal(listRes.status, 200);
     assert.ok(listRes.body.length > 0);
 
-    const pendingReq = listRes.body.find(r => r.status === 'pending');
+    const pendingReq = listRes.body.find(r => r.status === 'pending' && r.user_email === studentEmail);
     assert.ok(pendingReq);
     areaReqId = pendingReq.id;
 
-    // 2. Admin approves request
     const approveRes = await request(app)
       .patch(`/api/profile/admin/area-requests/${areaReqId}`)
-      .set('Authorization', `Bearer ${adminToken}`)
+      .set(CSRF)
+      .set('Cookie', adminCookie)
       .send({ status: 'approved' });
 
     assert.equal(approveRes.status, 200);
     assert.equal(approveRes.body.success, true);
 
-    // 3. Verify student profile area was updated to target area
     const checkRes = await request(app)
       .get('/api/profile')
-      .set('Authorization', `Bearer ${studentToken}`);
+      .set('Cookie', studentCookie);
 
     assert.equal(checkRes.body.profile.area.county, 'Kiambu');
   });

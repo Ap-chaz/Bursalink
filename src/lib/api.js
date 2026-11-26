@@ -1,7 +1,6 @@
 import { BURSARIES as DEFAULT_BURSARIES } from './data.js';
 
 const K = 'bursalink';
-const TOKEN_KEY = 'bursalink_token';
 const API_BASE = '/api';
 
 const blank = {
@@ -17,7 +16,7 @@ const blank = {
 
 let cachedBursaries = DEFAULT_BURSARIES.filter(b => b.status !== 'draft');
 
-// Initialize cached state
+// Initialize cached UI state (never stores auth tokens or secrets)
 export const load = () => {
   try {
     const raw = localStorage.getItem(K);
@@ -40,18 +39,11 @@ const upd = fn => {
 
 export const mutate = upd;
 
-export const getToken = () => localStorage.getItem(TOKEN_KEY);
-export const setToken = token => {
-  if (token) localStorage.setItem(TOKEN_KEY, token);
-  else localStorage.removeItem(TOKEN_KEY);
-};
-
 async function req(endpoint, options = {}) {
-  const token = getToken();
   const headers = {
     'Content-Type': 'application/json',
+    'X-Requested-With': 'bursalink',
     'ngrok-skip-browser-warning': 'true',
-    ...(token ? { Authorization: `Bearer ${token}` } : {}),
     ...options.headers
   };
 
@@ -64,6 +56,12 @@ async function req(endpoint, options = {}) {
   const data = await response.json().catch(() => ({}));
 
   if (!response.ok) {
+    if (
+      response.status === 401 &&
+      !['/auth/login', '/auth/register', '/auth/change-password', '/auth/account'].includes(endpoint)
+    ) {
+      upd(s => { s.user = null; });
+    }
     throw new Error(data.error || response.statusText || 'Request failed');
   }
 
@@ -88,31 +86,102 @@ export async function syncBursaries() {
 // Immediately attempt bursaries sync
 syncBursaries();
 
-export const sendCode = async email => {
-  if (!/\S+@\S+\.\S+/.test(email)) throw new Error('email');
-  await req('/auth/send-code', {
+export const register = async ({ name, email, password }) => {
+  return await req('/auth/register', {
     method: 'POST',
-    body: JSON.stringify({ email })
+    body: JSON.stringify({ name, email, password })
   });
 };
 
-export const verifyCode = async (email, code) => {
-  const res = await req('/auth/verify-code', {
+export const login = async ({ email, password }) => {
+  const res = await req('/auth/login', {
     method: 'POST',
-    body: JSON.stringify({ email, code })
+    body: JSON.stringify({ email, password, portal: 'student' })
   });
 
-  setToken(res.token);
+  if (res.step === 'otp') {
+    return res;
+  }
 
   upd(s => {
     s.user = res.user;
   });
 
   await syncUserData();
+  return res;
 };
 
+export const verifyOtp = async ({ challenge, code, purpose }) => {
+  const res = await req('/auth/verify-otp', {
+    method: 'POST',
+    body: JSON.stringify({ challenge, code, purpose })
+  });
+
+  if (res.user?.role && res.user.role !== 'student') {
+    await req('/auth/logout', { method: 'POST' }).catch(() => {});
+    upd(s => { s.user = null; });
+    throw new Error('Staff accounts must sign in through the staff portal.');
+  }
+
+  upd(s => {
+    s.user = res.user;
+  });
+
+  await syncUserData();
+  return res;
+};
+
+export const resendOtp = async ({ challenge, purpose }) => {
+  return await req('/auth/resend-otp', {
+    method: 'POST',
+    body: JSON.stringify({ challenge, purpose })
+  });
+};
+
+export const forgotPassword = async email => {
+  return await req('/auth/forgot-password', {
+    method: 'POST',
+    body: JSON.stringify({ email })
+  });
+};
+
+export const resetPassword = async ({ challenge, code, newPassword }) => {
+  return await req('/auth/reset-password', {
+    method: 'POST',
+    body: JSON.stringify({ challenge, code, newPassword })
+  });
+};
+
+export const changePassword = async ({ currentPassword, newPassword }) => {
+  return await req('/auth/change-password', {
+    method: 'POST',
+    body: JSON.stringify({ currentPassword, newPassword })
+  });
+};
+
+export async function checkSession() {
+  try {
+    const res = await req('/auth/me');
+    if (res?.user?.role === 'student') {
+      upd(s => {
+        s.user = res.user;
+        if (res.profile?.lang) {
+          s.profile = { ...s.profile, lang: res.profile.lang };
+        }
+      });
+      await syncUserData();
+      return res.user;
+    }
+    upd(s => { s.user = null; });
+    return null;
+  } catch {
+    upd(s => { s.user = null; });
+    return null;
+  }
+}
+
 export async function syncUserData() {
-  if (!getToken()) return;
+  if (!load().user) return;
 
   try {
     const [profileData, appsData, draftsData, notifsData, savedData] = await Promise.all([
@@ -149,6 +218,14 @@ export async function syncUserData() {
 }
 
 export const updateProfile = async patch => {
+  const keys = Object.keys(patch || {});
+  if (!load().user && keys.length === 1 && keys[0] === 'lang') {
+    upd(s => {
+      s.profile = { ...s.profile, lang: patch.lang };
+    });
+    return;
+  }
+
   await req('/profile', {
     method: 'PATCH',
     body: JSON.stringify(patch)
@@ -265,13 +342,14 @@ export const trackApplication = async ref => {
 
 export const logout = async () => {
   await req('/auth/logout', { method: 'POST' }).catch(() => {});
-  setToken(null);
-  upd(s => {
-    s.user = null;
-  });
+  const lang = load().profile.lang;
+  save({ ...blank, profile: { ...blank.profile, lang } });
 };
 
-export const deleteAccount = async () => {
-  setToken(null);
+export const deleteAccount = async password => {
+  await req('/auth/account', {
+    method: 'DELETE',
+    body: JSON.stringify({ password })
+  });
   save({ ...blank });
 };

@@ -4,7 +4,7 @@ import { logAudit } from '../services/auditService.js';
 export async function getProfile(req, res, next) {
   try {
     const userId = req.user.id;
-    const [rows] = await pool.query('SELECT * FROM profiles WHERE user_id = ?', [userId]);
+    const [rows] = await pool.execute('SELECT * FROM profiles WHERE user_id = ?', [userId]);
 
     let profile = rows[0] || null;
     if (profile) {
@@ -27,7 +27,7 @@ export async function getProfile(req, res, next) {
     }
 
     // Check for pending area request
-    const [areaReqs] = await pool.query(
+    const [areaReqs] = await pool.execute(
       "SELECT * FROM area_requests WHERE user_id = ? AND status = 'pending' ORDER BY created_at DESC LIMIT 1",
       [userId]
     );
@@ -51,9 +51,9 @@ export async function updateProfile(req, res, next) {
     const userId = req.user.id;
     const patch = req.body;
 
-    const [existing] = await pool.query('SELECT * FROM profiles WHERE user_id = ?', [userId]);
+    const [existing] = await pool.execute('SELECT * FROM profiles WHERE user_id = ?', [userId]);
     if (existing.length === 0) {
-      await pool.query('INSERT INTO profiles (user_id) VALUES (?)', [userId]);
+      await pool.execute('INSERT INTO profiles (user_id) VALUES (?)', [userId]);
     }
 
     const current = existing[0] || {};
@@ -65,21 +65,21 @@ export async function updateProfile(req, res, next) {
       currentDocs = { ...currentDocs, ...patch.docs };
     }
 
-    // Extract student details
+    // Extract student details with bounded string length
     const detailKeys = ['name', 'phone', 'school', 'level', 'year', 'idNo', 'guardian'];
     for (const k of detailKeys) {
       if (patch[k] !== undefined) {
-        currentDetails[k] = patch[k];
+        currentDetails[k] = patch[k] === null ? '' : String(patch[k]).trim().slice(0, 200);
       }
     }
 
     const saver = patch.saver !== undefined ? (patch.saver ? 1 : 0) : current.saver_mode;
-    const lang = patch.lang || current.lang || 'en';
+    const lang = ['en', 'sw'].includes(patch.lang) ? patch.lang : (current.lang || 'en');
     const notifyStatus = patch.notify?.status !== undefined ? (patch.notify.status ? 1 : 0) : current.notify_status;
     const notifyDeadline = patch.notify?.deadline !== undefined ? (patch.notify.deadline ? 1 : 0) : current.notify_deadline;
     const notifyMatch = patch.notify?.match !== undefined ? (patch.notify.match ? 1 : 0) : current.notify_match;
 
-    await pool.query(
+    await pool.execute(
       `UPDATE profiles
        SET docs = ?, details = ?, saver_mode = ?, lang = ?, notify_status = ?, notify_deadline = ?, notify_match = ?
        WHERE user_id = ?`,
@@ -110,12 +110,12 @@ export async function registerArea(req, res, next) {
       return res.status(400).json({ error: 'Area information is required' });
     }
 
-    const [rows] = await pool.query('SELECT area FROM profiles WHERE user_id = ?', [userId]);
+    const [rows] = await pool.execute('SELECT area FROM profiles WHERE user_id = ?', [userId]);
     if (rows.length > 0 && rows[0].area && rows[0].area !== 'null') {
       return res.status(400).json({ error: 'Area is already registered and locked. Request an area change to update it.' });
     }
 
-    await pool.query(
+    await pool.execute(
       'UPDATE profiles SET area = ? WHERE user_id = ?',
       [JSON.stringify(area), userId]
     );
@@ -142,7 +142,7 @@ export async function requestAreaChange(req, res, next) {
     }
 
     // Check for existing pending request
-    const [pending] = await pool.query(
+    const [pending] = await pool.execute(
       "SELECT id FROM area_requests WHERE user_id = ? AND status = 'pending'",
       [userId]
     );
@@ -151,7 +151,7 @@ export async function requestAreaChange(req, res, next) {
       return res.status(400).json({ error: 'You already have an area change request pending review.' });
     }
 
-    await pool.query(
+    await pool.execute(
       'INSERT INTO area_requests (user_id, target_area, reason) VALUES (?, ?, ?)',
       [userId, JSON.stringify(area), reason]
     );
@@ -175,7 +175,7 @@ const safeParse = v => {
 
 export async function getAreaRequests(req, res, next) {
   try {
-    const [rows] = await pool.query(`
+    const [rows] = await pool.execute(`
       SELECT ar.*, u.email as user_email
       FROM area_requests ar
       JOIN users u ON ar.user_id = u.id
@@ -195,7 +195,7 @@ export async function getAreaRequests(req, res, next) {
 
 export async function getAuditLogs(req, res, next) {
   try {
-    const [rows] = await pool.query(`
+    const [rows] = await pool.execute(`
       SELECT a.*, u.email as actor_email
       FROM audit_logs a
       LEFT JOIN users u ON a.user_id = u.id
@@ -224,13 +224,13 @@ export async function reviewAreaRequest(req, res, next) {
       return res.status(400).json({ error: "Status must be 'approved' or 'rejected'" });
     }
 
-    const [reqs] = await pool.query('SELECT * FROM area_requests WHERE id = ?', [id]);
+    const [reqs] = await pool.execute('SELECT * FROM area_requests WHERE id = ?', [id]);
     if (reqs.length === 0) {
       return res.status(404).json({ error: 'Request not found' });
     }
 
     const areaReq = reqs[0];
-    await pool.query('UPDATE area_requests SET status = ? WHERE id = ?', [status, id]);
+    await pool.execute('UPDATE area_requests SET status = ? WHERE id = ?', [status, id]);
 
     if (status === 'approved') {
       let areaVal;
@@ -238,7 +238,7 @@ export async function reviewAreaRequest(req, res, next) {
       if (typeof target === 'object' && target !== null) {
         areaVal = JSON.stringify(target);
       } else {
-        const [prof] = await pool.query('SELECT area FROM profiles WHERE user_id = ?', [areaReq.user_id]);
+        const [prof] = await pool.execute('SELECT area FROM profiles WHERE user_id = ?', [areaReq.user_id]);
         const curr = prof[0]?.area ? safeParse(prof[0].area) : {};
         if (typeof curr === 'object' && curr !== null) {
           areaVal = JSON.stringify({ ...curr, ward: target });
@@ -246,13 +246,13 @@ export async function reviewAreaRequest(req, res, next) {
           areaVal = JSON.stringify({ ward: target });
         }
       }
-      await pool.query('UPDATE profiles SET area = ? WHERE user_id = ?', [areaVal, areaReq.user_id]);
+      await pool.execute('UPDATE profiles SET area = ? WHERE user_id = ?', [areaVal, areaReq.user_id]);
     }
 
     // Send notification to user
     const notifId = 'notif_' + Date.now();
     const text = `Your area transfer request was ${status}.`;
-    await pool.query(
+    await pool.execute(
       'INSERT INTO notifications (id, user_id, text, go) VALUES (?, ?, ?, ?)',
       [notifId, areaReq.user_id, text, JSON.stringify({ view: 'profile' })]
     );

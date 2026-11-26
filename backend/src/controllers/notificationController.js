@@ -3,7 +3,7 @@ import pool from '../config/db.js';
 export async function listNotifications(req, res, next) {
   try {
     const userId = req.user.id;
-    const [rows] = await pool.query(
+    const [rows] = await pool.execute(
       'SELECT * FROM notifications WHERE user_id = ? ORDER BY created_at DESC',
       [userId]
     );
@@ -27,7 +27,7 @@ export async function markRead(req, res, next) {
     const userId = req.user.id;
     const { id } = req.params;
 
-    await pool.query('UPDATE notifications SET is_read = TRUE WHERE id = ? AND user_id = ?', [id, userId]);
+    await pool.execute('UPDATE notifications SET is_read = TRUE WHERE id = ? AND user_id = ?', [id, userId]);
 
     res.json({ success: true, message: 'Notification marked as read' });
   } catch (err) {
@@ -38,7 +38,7 @@ export async function markRead(req, res, next) {
 export async function markAllRead(req, res, next) {
   try {
     const userId = req.user.id;
-    await pool.query('UPDATE notifications SET is_read = TRUE WHERE user_id = ?', [userId]);
+    await pool.execute('UPDATE notifications SET is_read = TRUE WHERE user_id = ?', [userId]);
 
     res.json({ success: true, message: 'All notifications marked as read' });
   } catch (err) {
@@ -49,7 +49,7 @@ export async function markAllRead(req, res, next) {
 export async function getSaved(req, res, next) {
   try {
     const userId = req.user.id;
-    const [rows] = await pool.query('SELECT bursary_id FROM saved_bursaries WHERE user_id = ?', [userId]);
+    const [rows] = await pool.execute('SELECT bursary_id FROM saved_bursaries WHERE user_id = ?', [userId]);
 
     const saved = rows.map(r => r.bursary_id);
     res.json(saved);
@@ -63,21 +63,21 @@ export async function toggleSave(req, res, next) {
     const userId = req.user.id;
     const { id } = req.params;
 
-    const [existing] = await pool.query(
+    const [existing] = await pool.execute(
       'SELECT * FROM saved_bursaries WHERE user_id = ? AND bursary_id = ?',
       [userId, id]
     );
 
     let isSaved = false;
     if (existing.length > 0) {
-      await pool.query('DELETE FROM saved_bursaries WHERE user_id = ? AND bursary_id = ?', [userId, id]);
+      await pool.execute('DELETE FROM saved_bursaries WHERE user_id = ? AND bursary_id = ?', [userId, id]);
       isSaved = false;
     } else {
-      await pool.query('INSERT INTO saved_bursaries (user_id, bursary_id) VALUES (?, ?)', [userId, id]);
+      await pool.execute('INSERT INTO saved_bursaries (user_id, bursary_id) VALUES (?, ?)', [userId, id]);
       isSaved = true;
     }
 
-    const [all] = await pool.query('SELECT bursary_id FROM saved_bursaries WHERE user_id = ?', [userId]);
+    const [all] = await pool.execute('SELECT bursary_id FROM saved_bursaries WHERE user_id = ?', [userId]);
     const saved = all.map(r => r.bursary_id);
 
     res.json({ success: true, isSaved, saved });

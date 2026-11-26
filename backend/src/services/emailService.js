@@ -81,21 +81,28 @@ export async function sendBrevoEmail({ to, subject, htmlContent, textContent }) 
   }
 }
 
-export async function sendOtpEmail(email, code) {
+export async function sendOtpEmail(email, code, purpose = 'login') {
+  const reason = {
+    verify_email: 'verify your email address and finish creating your BursaLink account',
+    login: 'complete your sign-in to BursaLink',
+    reset: 'reset your BursaLink password'
+  }[purpose] || 'verify your identity on BursaLink';
   const subject = `${code} is your BursaLink verification code`;
   const htmlContent = wrapEmailHtml(
     subject,
     `<h2 style="margin:0 0 12px;color:#111;font-size:20px;">Your verification code</h2>
-     <p style="margin:0 0 16px;">Use the one-time verification code below to sign in to BursaLink. This code expires in <strong>10 minutes</strong>.</p>
+     <p style="margin:0 0 16px;">Use the one-time code below to ${escapeHtml(reason)}. This code expires in <strong>10 minutes</strong>.</p>
      <div style="padding:16px 20px;background:#e8f6ee;border:1px solid #b7e4c7;border-radius:12px;text-align:center;font-size:28px;font-weight:700;letter-spacing:6px;color:#0f6b4a;margin:0 0 16px;">
        ${escapeHtml(code)}
      </div>
-     <p style="margin:0;color:#6a7178;font-size:13px;">If you did not request this code, you can safely ignore this email.</p>`
+     <p style="margin:0 0 8px;color:#6a7178;font-size:13px;"><strong>Never share this code.</strong> BursaLink staff will never ask for it.</p>
+     <p style="margin:0;color:#6a7178;font-size:13px;">If you did not request this code, you can safely ignore this email. Your password has not been changed.</p>`
   );
-  const textContent = `Your BursaLink verification code is: ${code}\n\nThis code expires in 10 minutes.`;
+  const textContent = `Your BursaLink verification code is: ${code}\n\nUse it to ${reason}. It expires in 10 minutes. Never share this code with anyone.`;
 
   return sendBrevoEmail({ to: email, subject, htmlContent, textContent });
 }
+
 
 export async function sendApplicationSubmittedEmail({ email, ref, bursaryTitle }) {
   const subject = `Application ${ref} received – ${bursaryTitle || 'BursaLink'}`;

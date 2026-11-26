@@ -1,29 +1,25 @@
+import './setup.js';
 import { test, describe, after } from 'node:test';
 import assert from 'node:assert/strict';
 import request from 'supertest';
 import app from '../src/app.js';
 import { closePool } from '../src/config/db.js';
+import { CSRF, createVerifiedStudent, ensureAdminAndLogin } from './helpers.js';
 
 describe('Bursaries API Endpoints', () => {
-  let studentToken = '';
-  let adminToken = '';
+  let studentCookie = '';
+  let adminCookie = '';
 
   after(async () => {
     await closePool();
   });
 
-  test('Setup student and admin tokens', async () => {
-    // Student auth
-    const studentRes = await request(app)
-      .post('/api/auth/verify-code')
-      .send({ email: 'student_bursary_test@example.org', code: '123456' });
-    studentToken = studentRes.body.token;
+  test('Setup student and admin sessions', async () => {
+    const stu = await createVerifiedStudent(app);
+    studentCookie = stu.cookie;
 
-    // Admin auth (admin@bursalink.org is in default admin email list)
-    const adminRes = await request(app)
-      .post('/api/auth/verify-code')
-      .send({ email: 'admin@bursalink.org', code: '123456' });
-    adminToken = adminRes.body.token;
+    const adm = await ensureAdminAndLogin(app);
+    adminCookie = adm.cookie;
   });
 
   test('GET /api/bursaries returns seeded bursaries', async () => {
@@ -49,7 +45,8 @@ describe('Bursaries API Endpoints', () => {
   test('POST /api/bursaries fails with 403 for non-admin student', async () => {
     const res = await request(app)
       .post('/api/bursaries')
-      .set('Authorization', `Bearer ${studentToken}`)
+      .set(CSRF)
+      .set('Cookie', studentCookie)
       .send({
         title: 'Unauthorized Bursary',
         org: 'Hacker Org',
@@ -63,7 +60,7 @@ describe('Bursaries API Endpoints', () => {
 
   test('POST /api/bursaries succeeds for admin', async () => {
     const newBursary = {
-      id: `b_test_${Date.now()}`,
+      id: `b_test_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
       title: 'National STEM Grant',
       org: 'Ministry of Education',
       type: 'National',
@@ -83,7 +80,8 @@ describe('Bursaries API Endpoints', () => {
 
     const res = await request(app)
       .post('/api/bursaries')
-      .set('Authorization', `Bearer ${adminToken}`)
+      .set(CSRF)
+      .set('Cookie', adminCookie)
       .send(newBursary);
 
     assert.equal(res.status, 201);

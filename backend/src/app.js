@@ -5,15 +5,19 @@ import cookieParser from 'cookie-parser';
 import routes from './routes/index.js';
 import { errorHandler } from './middleware/errorHandler.js';
 import { globalLimiter } from './middleware/rateLimiter.js';
+import { csrfProtection } from './middleware/csrf.js';
+import { isProd } from './config/security.js';
 
 const app = express();
 
 // Trust reverse proxies (ngrok, Vite dev proxy, Cloudflare) for correct IP identification
 app.set('trust proxy', 1);
 
-// 1. HTTP Security Headers (Hide express, prevent sniffing & clickjacking)
+// 1. HTTP Security Headers (Hide express, prevent sniffing, clickjacking & referrer leaks)
 app.use(helmet({
-  crossOriginResourcePolicy: { policy: 'cross-origin' }
+  crossOriginResourcePolicy: { policy: 'cross-origin' },
+  referrerPolicy: { policy: 'no-referrer' },
+  hsts: isProd() ? { maxAge: 31536000, includeSubDomains: true, preload: true } : false
 }));
 
 // 2. CORS Hardening
@@ -30,7 +34,7 @@ app.use(cors({
     }
   },
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
+  allowedHeaders: ['Content-Type', 'X-Requested-With', 'ngrok-skip-browser-warning'],
   credentials: true
 }));
 
@@ -41,8 +45,9 @@ app.use(express.urlencoded({ extended: true, limit: '100kb' }));
 // 4. Secure Cookie Parser for HttpOnly Session Cookies
 app.use(cookieParser());
 
-// 4. Rate Limiting Protection for all API endpoints
+// 4. Rate Limiting + CSRF protection for all API endpoints
 app.use('/api', globalLimiter);
+app.use('/api', csrfProtection(allowedOrigins));
 
 // 5. Root & Health Check - Strictly Minimal (Zero Information Disclosure)
 app.get('/', (req, res) => {

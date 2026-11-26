@@ -1,15 +1,8 @@
-// Real Admin API Client connecting directly to Express & MySQL backend
+// Real Admin API Client connecting directly to Express & MySQL backend via HttpOnly session cookies
 import { BURSARIES as DEFAULT_BURSARIES } from './data.js';
 
 const S_KEY = 'bursalink-admin-session';
-const TOKEN_KEY = 'bursalink_admin_token';
 const API_BASE = '/api';
-
-export const getToken = () => localStorage.getItem(TOKEN_KEY);
-export const setToken = token => {
-  if (token) localStorage.setItem(TOKEN_KEY, token);
-  else localStorage.removeItem(TOKEN_KEY);
-};
 
 const rd = (k, d) => {
   try {
@@ -26,11 +19,10 @@ let cachedAreaReqs = [];
 let cachedAudit = [];
 
 async function req(endpoint, options = {}) {
-  const token = getToken();
   const headers = {
     'Content-Type': 'application/json',
+    'X-Requested-With': 'bursalink',
     'ngrok-skip-browser-warning': 'true',
-    ...(token ? { Authorization: `Bearer ${token}` } : {}),
     ...options.headers
   };
 
@@ -44,9 +36,8 @@ async function req(endpoint, options = {}) {
 
   if (!response.ok) {
     if (response.status === 401 || response.status === 403) {
-      if (endpoint.includes('/admin/')) {
+      if (endpoint.includes('/admin/') || endpoint === '/auth/me') {
         localStorage.removeItem(S_KEY);
-        setToken(null);
       }
     }
     throw new Error(data.error || response.statusText || 'Request failed');
@@ -57,40 +48,89 @@ async function req(endpoint, options = {}) {
 
 export const session = () => rd(S_KEY, null);
 
-export const sendCode = async email => {
-  if (!/\S+@\S+\.\S+/.test(email)) throw new Error('email');
-  return await req('/auth/send-code', {
-    method: 'POST',
-    body: JSON.stringify({ email })
-  });
-};
+export const login = async (email, password) => {
+  if (!/\S+@\S+\.\S+/.test(email)) throw new Error('Please enter a valid work email.');
+  if (!password) throw new Error('Password is required.');
 
-export const signIn = async (email, code) => {
-  if (!/\S+@\S+\.\S+/.test(email)) throw new Error('email');
-  if (!code || !code.trim()) throw new Error('code');
-
-  const res = await req('/auth/verify-code', {
+  const res = await req('/auth/login', {
     method: 'POST',
-    body: JSON.stringify({ email: email.trim(), code: code.trim(), portal: 'admin' })
+    body: JSON.stringify({ email: email.trim(), password, portal: 'admin' })
   });
 
-  if (res.user.role !== 'admin') {
-    // Invalidate session cookie if student tries to login as staff
+  if (res.step === 'otp') {
+    return res;
+  }
+
+  if (res.user?.role !== 'admin') {
     await req('/auth/logout', { method: 'POST' }).catch(() => {});
     throw new Error('Access denied: This email is not authorized as administrative staff.');
   }
 
-  if (res.token) {
-    setToken(res.token);
+  wr(S_KEY, { email: res.user.email, role: res.user.role, id: res.user.id });
+  return res;
+};
+
+export const verifyOtp = async ({ challenge, code, purpose }) => {
+  const res = await req('/auth/verify-otp', {
+    method: 'POST',
+    body: JSON.stringify({ challenge, code: String(code || '').trim(), purpose })
+  });
+
+  if (res.user?.role !== 'admin') {
+    await req('/auth/logout', { method: 'POST' }).catch(() => {});
+    throw new Error('Access denied: This email is not authorized as administrative staff.');
   }
+
   wr(S_KEY, { email: res.user.email, role: res.user.role, id: res.user.id });
   return res.user;
+};
+
+export const resendOtp = async ({ challenge, purpose }) => {
+  return await req('/auth/resend-otp', {
+    method: 'POST',
+    body: JSON.stringify({ challenge, purpose })
+  });
+};
+
+export const forgotPassword = async email => {
+  return await req('/auth/forgot-password', {
+    method: 'POST',
+    body: JSON.stringify({ email: email.trim() })
+  });
+};
+
+export const resetPassword = async ({ challenge, code, newPassword }) => {
+  return await req('/auth/reset-password', {
+    method: 'POST',
+    body: JSON.stringify({ challenge, code: String(code || '').trim(), newPassword })
+  });
+};
+
+export const changePassword = async ({ currentPassword, newPassword }) => {
+  return await req('/auth/change-password', {
+    method: 'POST',
+    body: JSON.stringify({ currentPassword, newPassword })
+  });
+};
+
+export const checkSession = async () => {
+  try {
+    const res = await req('/auth/me');
+    if (res?.user?.role === 'admin') {
+      wr(S_KEY, { email: res.user.email, role: res.user.role, id: res.user.id });
+      return res.user;
+    }
+    localStorage.removeItem(S_KEY);
+    return null;
+  } catch {
+    localStorage.removeItem(S_KEY);
+    return null;
+  }
 };
 
 export const signOut = async () => {
   await req('/auth/logout', { method: 'POST' }).catch(() => {});
   localStorage.removeItem(S_KEY);
-  setToken(null);
 };
 
 export const bursaries = () => cachedBursaries;
@@ -189,11 +229,3 @@ export const decideArea = async (requestId, status) => {
   });
   await Promise.all([loadAreaRequests(), loadAudit()]);
 };
-
-// Initial background load if logged in
-if (session()) {
-  loadBursaries();
-  loadApplications();
-  loadAreaRequests();
-  loadAudit();
-}

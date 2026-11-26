@@ -1,7 +1,11 @@
 import app from './app.js';
 import dotenv from 'dotenv';
+import { authSecret } from './config/security.js';
 
 dotenv.config();
+
+// Fail fast: refuse to start in production without a strong AUTH_SECRET.
+authSecret();
 
 const PORT = process.env.PORT || 5000;
 

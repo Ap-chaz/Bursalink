@@ -38,7 +38,7 @@ export async function runMigration() {
       ) ENGINE=InnoDB;
     `);
 
-    // 2. otps table
+    // 2. otps table (hashed one-time codes bound to a challenge)
     await connection.query(`
       CREATE TABLE IF NOT EXISTS otps (
         id INT AUTO_INCREMENT PRIMARY KEY,
@@ -53,6 +53,62 @@ export async function runMigration() {
 
     // Modify existing table if code column is still VARCHAR(10)
     await connection.query(`ALTER TABLE otps MODIFY COLUMN code VARCHAR(128) NOT NULL;`).catch(() => {});
+
+    // ---- Password authentication upgrade (idempotent; works on MySQL and MariaDB) ----
+    const hasColumn = async (table, column) => {
+      const [rows] = await connection.query(
+        'SELECT 1 FROM information_schema.columns WHERE table_schema = ? AND table_name = ? AND column_name = ? LIMIT 1',
+        [DB_NAME, table, column]
+      );
+      return rows.length > 0;
+    };
+    const addColumn = async (table, column, ddl) => {
+      if (await hasColumn(table, column)) return false;
+      await connection.query(`ALTER TABLE \`${table}\` ADD COLUMN \`${column}\` ${ddl}`);
+      return true;
+    };
+
+    const passwordColumnAdded = await addColumn('users', 'password_hash', 'VARCHAR(255) NULL');
+    const verifiedColumnAdded = await addColumn('users', 'email_verified', 'BOOLEAN NOT NULL DEFAULT FALSE');
+    await addColumn('users', 'failed_attempts', 'INT NOT NULL DEFAULT 0');
+    await addColumn('users', 'locked_until', 'DATETIME NULL');
+    await addColumn('users', 'password_changed_at', 'DATETIME NULL');
+    await addColumn('users', 'last_login_at', 'DATETIME NULL');
+    if (verifiedColumnAdded) {
+      // accounts created before passwords existed already proved their email with a one-time code
+      await connection.query('UPDATE users SET email_verified = TRUE');
+      console.log('ℹ️  Existing users have no password yet: they must use "Forgot password" once to set one.');
+    }
+    if (passwordColumnAdded) console.log('✅ users.password_hash added');
+
+    await addColumn('otps', 'purpose', "VARCHAR(20) NOT NULL DEFAULT 'login'");
+    await addColumn('otps', 'challenge_hash', 'CHAR(64) NULL');
+    await addColumn('otps', 'attempts', 'TINYINT NOT NULL DEFAULT 0');
+    await addColumn('otps', 'user_id', 'INT NULL');
+    const [idx] = await connection.query(
+      "SELECT 1 FROM information_schema.statistics WHERE table_schema = ? AND table_name = 'otps' AND index_name = 'idx_challenge' LIMIT 1",
+      [DB_NAME]
+    );
+    if (!idx.length) await connection.query('CREATE INDEX idx_challenge ON otps (challenge_hash)');
+    // legacy unkeyed-SHA256 codes are no longer valid under the new scheme
+    await connection.query('UPDATE otps SET used = TRUE WHERE challenge_hash IS NULL');
+
+    // server-side sessions (only a SHA-256 of the cookie token is stored)
+    await connection.query(`
+      CREATE TABLE IF NOT EXISTS sessions (
+        id CHAR(64) PRIMARY KEY,
+        user_id INT NOT NULL,
+        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        last_seen DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        expires_at DATETIME NOT NULL,
+        idle_seconds INT NOT NULL,
+        ip_address VARCHAR(45) NULL,
+        user_agent VARCHAR(255) NULL,
+        INDEX idx_sessions_user (user_id),
+        INDEX idx_sessions_expires (expires_at),
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+      ) ENGINE=InnoDB;
+    `);
 
     // 3. profiles table
     await connection.query(`
