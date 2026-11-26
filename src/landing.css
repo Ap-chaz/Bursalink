@@ -447,3 +447,19 @@
  .quick button{font-size:12.5px;gap:6px}
  .quick svg{width:26px;height:26px}
 }
+
+/* ---- Keep SW/lang button visible: prune header items on mid widths ---- */
+.lp .links{flex:0 1 auto;min-width:0}
+.navin{gap:12px}
+@media(min-width:900px) and (max-width:1320px){
+ .navr .iconbtn:not(.lang):not(.burger){display:none}
+ .lp .links{gap:18px;margin-left:12px}
+ .brand b{font-size:22px}
+ .reg{padding:9px 16px}
+}
+@media(min-width:900px) and (max-width:1080px){
+ .lp .links{gap:12px}
+ .lp .links a{font-size:13px}
+ .navin{padding:10px 14px;gap:8px}
+ .signin{padding:8px 8px}
+}
