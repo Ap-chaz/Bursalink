@@ -168,6 +168,11 @@ export async function requestAreaChange(req, res, next) {
   }
 }
 
+const safeParse = v => {
+  if (typeof v !== 'string') return v;
+  try { return JSON.parse(v); } catch { return v; }
+};
+
 export async function getAreaRequests(req, res, next) {
   try {
     const [rows] = await pool.query(`
@@ -179,7 +184,7 @@ export async function getAreaRequests(req, res, next) {
 
     const requests = rows.map(r => ({
       ...r,
-      target_area: typeof r.target_area === 'string' ? JSON.parse(r.target_area) : r.target_area
+      target_area: safeParse(r.target_area)
     }));
 
     res.json(requests);

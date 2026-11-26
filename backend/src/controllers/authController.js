@@ -131,7 +131,6 @@ export async function verifyCode(req, res, next) {
         user.role = 'admin';
       }
     }
-    }
 
     // Audit log successful authentication
     await logAudit('USER_LOGIN_SUCCESS', {
