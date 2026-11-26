@@ -107,6 +107,37 @@ export default function Landing({lang,toggle,start}){
   )
  },[q,lang])
 
+ const quick=[
+  ['school',x('Secondary school bursaries','Bursari za sekondari')],
+  ['uni',x('University & college funding','Ufadhili wa chuo')],
+  ['pin',x('Bursaries for my ward','Bursari za wadi yangu')],
+  ['build',x('County government funds','Mifuko ya kaunti')],
+  ['flag',x('Constituency (CDF) bursaries','Bursari za eneobunge')],
+  ['hand',x('Foundations & NGOs','Wakfu na NGO')],
+  ['clock',x('Closing this month','Zinazofungwa mwezi huu')],
+  ['doc',x('Track my application','Fuatilia ombi langu')]]
+
+ const hero=<svg className="herobg" viewBox="0 0 1600 640" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+  <defs><linearGradient id="sky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#2c4a7a"/><stop offset=".55" stopColor="#7d8fb4"/><stop offset="1" stopColor="#e9a46e"/></linearGradient>
+  <linearGradient id="gr" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#1a3a3a"/><stop offset=".55" stopColor="#0c1f24"/></linearGradient></defs>
+  <rect width="1600" height="640" fill="url(#sky)"/>
+  <g fill="#34507a" opacity=".55"><rect x="60" y="330" width="90" height="180"/><rect x="170" y="290" width="70" height="220"/><rect x="1250" y="300" width="100" height="210"/><rect x="1370" y="350" width="80" height="160"/><rect x="1470" y="310" width="90" height="200"/></g>
+  <g fill="#10272e">
+   <path d="M560 520V360l120-70 120 70v160z"/><path d="M680 290V220l0-30"/><rect x="672" y="200" width="16" height="92"/><path d="M640 220h80l-40-36z"/>
+   <rect x="440" y="410" width="130" height="110"/><rect x="800" y="410" width="150" height="110"/>
+   <path d="M0 520h1600v120H0z" fill="url(#gr)"/></g>
+  <g fill="#ffd98a" opacity=".9">{[[600,400],[640,400],[720,400],[760,400],[600,450],[640,450],[720,450],[760,450],[460,440],[500,440],[830,440],[880,440],[920,440]].map(([a,b],i)=><rect key={i} x={a} y={b} width="14" height="20" rx="2"/>)}</g>
+ </svg>
+
+ const onQuickClick=(iconKey)=>{
+  if(iconKey==='doc'){
+   setTrackingOpen(true)
+   setTrackErr('')
+  } else {
+   start()
+  }
+ }
+
  const handleChipClick=(key)=>{
   if(key==='doc'){
    setTrackingOpen(true)
@@ -135,78 +166,14 @@ export default function Landing({lang,toggle,start}){
  return <div className="lp" id="top">
   <Header {...{lang,toggle,start}} route="/" onTrack={()=>setTrackingOpen(true)}/>
 
-  {/* Hero Section — Distinct Education Funding Identity */}
-  <section className="hero">
-   <div className="hero-mesh" aria-hidden="true"/>
+  <section className="hero">{hero}<div className="shade"/>
    <div className="heroin">
-    <div className="hero-badge">
-     <span className="live-dot"/>
-     <span>{x('Kenya’s Official Bursary & Scholarship Gateway','Mlango Rasmi wa Bursari na Ufadhili Kenya')}</span>
-    </div>
-
-    <h1 className="hero-title">
-     {x('Never Miss Another','Usikose Tena')} <br/>
-     <span className="grad-txt">{x('Bursary Deadline.','Tarehe ya Mwisho ya Bursari.')}</span>
-    </h1>
-
-    <p className="hero-sub">
-     {x(
-      'Discover, match, and apply for verified NG-CDF, County Government, and Foundation scholarships across all 1,450 wards — zero paperwork, zero fees, 100% transparent.',
-      'Tafuta, linganisha, na utume maombi ya bursari halisi za NG-CDF, Kaunti, na mashirika binafsi katika wadi zote 1,450 — bila karatasi, bila malipo, na kwa uwazi 100%.'
-     )}
-    </p>
-
-    {/* Search Hub */}
-    <div className="search-hub" id="search">
-     <form className="hub-bar" role="search" onSubmit={e=>{e.preventDefault();start()}}>
-      <div className="hub-search-icon"><Ic n="search" s={22}/></div>
-      <input
-       value={q}
-       onChange={e=>setQ(e.target.value)}
-       aria-label={x('Search bursaries','Tafuta bursari')}
-       placeholder={x('Search by bursary name, constituency, county, or ward (e.g. Westlands, Secondary, Equity)...','Tafuta kwa jina la bursari, kaunti, eneobunge, au wadi (mf. Westlands, Sekondari, Equity)...')}
-      />
-      <button type="submit" className="hub-submit-btn">{x('Explore Funds','Tafuta Mifuko')}</button>
-     </form>
-
-     {/* Filter Chips */}
-     <div className="hub-chips">
-      <span className="hub-chips-label">{x('Popular Categories:','Aina Maarufu:')}</span>
-      <div className="chips-list">
-       {filterChips.map(([k, lbl, icon])=>(
-        <button key={k} className="chip-item" onClick={()=>handleChipClick(k)}>
-         <Ic n={icon} s={16}/>
-         <span>{lbl}</span>
-        </button>
-       ))}
-      </div>
-     </div>
-    </div>
-
-    {/* Transparent Live Impact Metrics */}
-    <div className="hero-stats">
-     <div className="stat-box">
-      <b>1,450</b>
-      <span>{x('Wards Covered','Wadi Zote 1,450')}</span>
-     </div>
-     <div className="stat-sep"/>
-     <div className="stat-box">
-      <b>290</b>
-      <span>{x('Constituencies','Maeneobunge 290')}</span>
-     </div>
-     <div className="stat-sep"/>
-     <div className="stat-box">
-      <b>47</b>
-      <span>{x('Counties Mapped','Kaunti Zote 47')}</span>
-     </div>
-     <div className="stat-sep"/>
-     <div className="stat-box">
-      <b>KES 0</b>
-      <span>{x('100% Free Application','Maombi Bure 100%')}</span>
-     </div>
-    </div>
-   </div>
-  </section>
+    <h1>{x('Kenya bursaries simplified','Bursari za Kenya zimerahisishwa')}<br/>{x('All your applications unified','Maombi yako yote mahali pamoja')}</h1>
+    <div className="panel" id="search">
+     <form className="searchbar" role="search" onSubmit={e=>{e.preventDefault();start()}}><Ic n="search" s={22}/>
+      <input value={q} onChange={e=>setQ(e.target.value)} aria-label={x('Search bursaries','Tafuta bursari')} placeholder={x('Type name of bursary, provider, county, ward etc...','Andika jina la bursari, mtoaji, kaunti, wadi n.k...')}/></form>
+     <ul className="quick">{quick.map(([i,l])=><li key={l}><button onClick={()=>onQuickClick(i)}><Ic n={i} s={34}/><span>{l}</span></button></li>)}</ul>
+    </div></div></section>
 
   {/* Live Application Tracker Modal */}
   {trackingOpen && (
