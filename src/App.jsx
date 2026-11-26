@@ -79,9 +79,9 @@ function Login({act,err,t,mode,setMode}){const reg=mode==='register',[e,setE]=us
 function AreaForm({act,err,t}){const [co,setCo]=useState(''),[cn,setCn]=useState(''),[w,setW]=useState(''),[ok,setOk]=useState(false)
  return <div className="card"><h2>Where do you live?</h2><label>County</label><select value={co} onChange={e=>{setCo(e.target.value);setCn('');setW('')}}><option value="">Choose</option>{Object.keys(GEO).map(x=><option key={x}>{x}</option>)}</select>
  <label>Constituency</label><select value={cn} disabled={!co} onChange={e=>{setCn(e.target.value);setW('')}}><option value="">Choose</option>{co&&Object.keys(GEO[co]).map(x=><option key={x}>{x}</option>)}</select>
- <label>Ward</label><select value={w} disabled={!cn} onChange={e=>setW(e.target.value)}><option value="">Choose</option>{cn&&GEO[co][cn].map(x=><option key={x}>{x}</option>)}</select>
+ <label>Ward</label>{cn&&GEO[co][cn].length===0?<input value={w} maxLength={60} placeholder="Type your ward name" onChange={e=>setW(e.target.value.replace(/\s+/g,' ').trimStart())}/>:<select value={w} disabled={!cn} onChange={e=>setW(e.target.value)}><option value="">Choose</option>{cn&&GEO[co][cn].map(x=><option key={x}>{x}</option>)}</select>}
  <p><b>⚠ {t('lock')}</b></p><label className="check"><input type="checkbox" checked={ok} onChange={e=>setOk(e.target.checked)}/> {t('confirm')}</label>
- <button className="primary" disabled={!w||!ok} onClick={()=>act(()=>api.registerArea({county:co,constituency:cn,ward:w}))}>{t('save')}</button>{err&&<p className="err">{err}</p>}</div>}
+ <button className="primary" disabled={!w.trim()||!ok} onClick={()=>act(()=>api.registerArea({county:co,constituency:cn,ward:w.trim()}))}>{t('save')}</button>{err&&<p className="err">{err}</p>}</div>}
 function Home({s,B,t,go,Card,appFor}){const open=B.filter(b=>isOpen(b)&&placeOk(b,s.profile.area)),p=completion(s.profile)
  const rec=open.filter(b=>!appFor(b.id)&&(!s.profile.level||b.levels.includes(s.profile.level))),need=s.apps.find(a=>a.status==='more_info_needed')
  const dead=open.filter(b=>daysLeft(b)<=14).sort((a,b)=>daysLeft(a)-daysLeft(b))
