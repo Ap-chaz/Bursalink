@@ -181,7 +181,6 @@ export default function Landing({lang,toggle,start}){
     <div className="tracker-modal" onClick={e=>e.stopPropagation()}>
      <div className="tracker-head">
       <div>
-       <span className="badge-tag">{x('Live Status','Hali ya Moja kwa Moja')}</span>
        <h2 style={{margin:'6px 0 0',fontSize:'20px',color:'#0f172a'}}>{x('Track Application Status','Fuatilia Hali ya Ombi Lako')}</h2>
       </div>
       <button className="tracker-close" onClick={()=>setTrackingOpen(false)} aria-label="Close">✕</button>
@@ -260,7 +259,6 @@ export default function Landing({lang,toggle,start}){
   <section className="workflow-sec" id="how-it-works">
    <div className="sec-in">
     <div className="sec-title-wrap">
-     <span className="badge-tag">{x('3 Easy Steps','Hatua 3 Rahisi')}</span>
      <h2 className="sec-h2">{x('How BursaLink Works for Students & Parents','Jinsi BursaLink Inavyorahisisha Maombi ya Elimu')}</h2>
      <p className="sec-p">{x('No more printing physical forms, traveling to constituency offices, or losing track of award lists.','Hakuna tena kuchapisha fomu, kusafiri hadi ofisi za eneobunge, au kupoteza taarifa za orodha.')}</p>
     </div>
@@ -305,7 +303,6 @@ export default function Landing({lang,toggle,start}){
   <section className="benefits-sec" id="benefits">
    <div className="sec-in">
     <div className="sec-title-wrap">
-     <span className="badge-tag">{x('Why BursaLink','Kwa Nini BursaLink')}</span>
      <h2 className="sec-h2">{x('Fair, Fast & Transparent Education Access','Elimu ya Haki, Haraka na Wazi')}</h2>
      <p className="sec-p">{x('Designed directly with Kenyan learners, parents, and bursary committees in mind.','Imebuniwa kusaidia wanafunzi, wazazi na kamati za bursari nchini Kenya.')}</p>
     </div>
@@ -342,7 +339,6 @@ export default function Landing({lang,toggle,start}){
   <section className="opps-sec" id="opportunities">
    <div className="sec-in">
     <div className="sec-title-wrap">
-     <span className="badge-tag">{x('Verified Partners','Wafadhili Walioidhinishwa')}</span>
      <h2 className="sec-h2">{x('Explore Funding Programs Across Kenya','Chunguza Programu za Bursari')}</h2>
      <p className="sec-p">{x('From parliamentary constituency funds to corporate foundations and county allocations.','Kuanzia mifuko ya maeneobunge hadi mashirika ya kitaifa na kaunti.')}</p>
     </div>
