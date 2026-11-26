@@ -111,30 +111,30 @@ export default function Landing({lang,toggle,start}){
   {trackingOpen && (
    <div style={{
     position:'fixed',inset:0,background:'rgba(10,20,30,0.7)',backdropFilter:'blur(8px)',
-    zIndex:100,display:'flex',alignItems:'center',justifyContent:'center',padding:'16px'
+    zIndex:100,display:'flex',alignItems:'center',justifyContent:'center',padding:'12px'
    }} onClick={()=>setTrackingOpen(false)}>
     <div style={{
-     background:'#fff',borderRadius:'24px',maxWidth:'560px',width:'100%',padding:'28px',
+     background:'#fff',borderRadius:'20px',maxWidth:'560px',width:'100%',padding:'clamp(16px, 4vw, 28px)',
      boxShadow:'0 20px 40px rgba(0,0,0,0.25)',color:'#222',maxHeight:'90vh',overflowY:'auto'
     }} onClick={e=>e.stopPropagation()}>
-     <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'16px'}}>
-      <h2 style={{fontSize:'22px',fontWeight:'600',margin:0}}>
+     <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',gap:'12px',marginBottom:'14px'}}>
+      <h2 style={{fontSize:'clamp(18px, 4.5vw, 22px)',fontWeight:'600',margin:0}}>
        {x('Track Your Application Status','Fuatilia Hali ya Ombi Lako')}
       </h2>
-      <button style={{background:'none',border:0,fontSize:'24px',cursor:'pointer',color:'#666',lineHeight:1}} onClick={()=>setTrackingOpen(false)}>✕</button>
+      <button style={{background:'none',border:0,fontSize:'22px',cursor:'pointer',color:'#666',lineHeight:1,padding:'4px'}} onClick={()=>setTrackingOpen(false)}>✕</button>
      </div>
-     <p style={{color:'#666',fontSize:'14px',marginBottom:'18px'}}>
+     <p style={{color:'#666',fontSize:'14px',marginBottom:'16px',lineHeight:1.5}}>
       {x('Enter your official Bursalink reference number (e.g. BL-2026-000001) to view real-time status and review history from the government database.',
          'Weka nambari yako ya kumbukumbu ya Bursalink (mfano BL-2026-000001) ili uone hali ya sasa na historia kutoka hifadhidata ya serikali.')}
      </p>
 
-     <form onSubmit={submitTrack} style={{display:'flex',gap:'10px',marginBottom:'20px'}}>
+     <form onSubmit={submitTrack} style={{display:'flex',flexWrap:'wrap',gap:'10px',marginBottom:'18px'}}>
       <input
        value={trackRef}
        onChange={e=>setTrackRef(e.target.value.toUpperCase())}
        placeholder="BL-2026-000001"
        style={{
-        flex:1,padding:'12px 16px',fontSize:'16px',borderRadius:'12px',
+        flex:'1 1 200px',minWidth:0,padding:'12px 14px',fontSize:'16px',borderRadius:'12px',
         border:'2px solid #ccc',fontFamily:'monospace',fontWeight:'bold'
        }}
       />
@@ -142,8 +142,8 @@ export default function Landing({lang,toggle,start}){
        type="submit"
        disabled={trackLoading||!trackRef.trim()}
        style={{
-        background:'#1fb355',color:'#fff',border:0,borderRadius:'12px',
-        padding:'12px 20px',fontSize:'15px',fontWeight:'600',cursor:'pointer'
+        flex:'1 1 auto',background:'#1fb355',color:'#fff',border:0,borderRadius:'12px',
+        padding:'12px 20px',fontSize:'15px',fontWeight:'600',cursor:'pointer',whiteSpace:'nowrap'
        }}
       >
        {trackLoading ? x('Searching...','Inatafuta...') : x('Check Status','Angalia Hali')}
@@ -157,8 +157,8 @@ export default function Landing({lang,toggle,start}){
      )}
 
      {trackData && (
-      <div style={{background:'#f8fafc',border:'1px solid #e2e8f0',borderRadius:'16px',padding:'20px'}}>
-       <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:'12px'}}>
+      <div style={{background:'#f8fafc',border:'1px solid #e2e8f0',borderRadius:'16px',padding:'clamp(14px, 3vw, 20px)'}}>
+       <div style={{display:'flex',flexWrap:'wrap',justifyContent:'space-between',alignItems:'flex-start',gap:'10px',marginBottom:'12px'}}>
         <div>
          <span style={{fontSize:'12px',color:'#64748b',fontWeight:'bold',letterSpacing:'0.05em'}}>{x('REFERENCE CODE','NAMBARI YA KUMBUKUMBU')}</span>
          <h3 style={{fontSize:'18px',fontFamily:'monospace',margin:'4px 0 0',color:'#0f172a'}}>{trackData.ref}</h3>
@@ -166,7 +166,7 @@ export default function Landing({lang,toggle,start}){
         <span style={{
          background: trackData.status === 'approved' ? '#dcfce7' : trackData.status === 'under_review' ? '#fef9c3' : '#e0f2fe',
          color: trackData.status === 'approved' ? '#15803d' : trackData.status === 'under_review' ? '#854d0e' : '#0369a1',
-         padding:'6px 14px',borderRadius:'999px',fontSize:'14px',fontWeight:'600'
+         padding:'6px 14px',borderRadius:'999px',fontSize:'13px',fontWeight:'600'
         }}>
          {trackData.statusLabel}
         </span>
@@ -184,12 +184,12 @@ export default function Landing({lang,toggle,start}){
          </h4>
          <div style={{display:'flex',flexDirection:'column',gap:'8px'}}>
           {trackData.history.map((h, idx) => (
-           <div key={idx} style={{display:'flex',justifyContent:'space-between',fontSize:'13px',background:'#fff',padding:'8px 12px',borderRadius:'8px',border:'1px solid #f1f5f9'}}>
-            <div>
+           <div key={idx} style={{display:'flex',flexWrap:'wrap',justifyContent:'space-between',gap:'6px',fontSize:'13px',background:'#fff',padding:'8px 12px',borderRadius:'8px',border:'1px solid #f1f5f9'}}>
+            <div style={{minWidth:0,flex:'1 1 180px'}}>
              <b style={{color:'#1e293b'}}>{h.statusLabel}</b>
-             {h.note && <span style={{color:'#64748b',marginLeft:'6px'}}>· {h.note}</span>}
+             {h.note && <span style={{color:'#64748b',marginLeft:'6px',wordBreak:'break-word'}}>· {h.note}</span>}
             </div>
-            <span style={{color:'#94a3b8',fontSize:'12px'}}>{new Date(h.at).toLocaleDateString()}</span>
+            <span style={{color:'#94a3b8',fontSize:'12px',whiteSpace:'nowrap'}}>{new Date(h.at).toLocaleDateString()}</span>
            </div>
           ))}
          </div>

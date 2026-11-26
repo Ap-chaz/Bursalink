@@ -80,7 +80,7 @@
 
 .adm .g2{display:grid;gap:0 12px;grid-template-columns:1fr}
 .adm .g2>*{min-width:0}
-.adm .tiles{display:grid;grid-template-columns:repeat(2,1fr);gap:12px;margin-top:12px}
+.adm .tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(135px,1fr));gap:12px;margin-top:12px}
 .adm .tile{background:#fff;border:1px solid #e6e8eb;border-radius:16px;padding:16px}
 .adm .tile b{display:block;font-size:30px;font-weight:500;color:var(--gd)}
 .adm .tile span{font-size:14px}
@@ -132,20 +132,23 @@
 .adm .panel,.adm .tile{min-width:0;overflow-wrap:anywhere}
 .adm .acts>button{flex:1 1 auto}
 @media(pointer:coarse){.adm button{min-height:44px}.adm .ck{min-height:44px}}
-@media(max-width:768px){
-  .adm .ain{flex-wrap:wrap;gap:10px}
-  .adm nav.tabs{order:3;width:100% !important;padding-bottom:4px !important}
+@media(max-width:920px){
+  .adm .ain{flex-wrap:wrap;gap:8px 12px}
+  .adm nav.tabs{order:3;width:100% !important;padding-bottom:4px !important;border-top:1px solid #f1f3f5 !important;padding-top:6px !important}
 }
 @media(max-width:520px){
-  .adm .ain{gap:8px;padding:8px 12px}
-  .adm .brand b{font-size:18px}
-  .adm .brand svg{width:26px;height:26px}
+  .adm .ain{gap:6px 8px;padding:8px 12px}
+  .adm .brand b{font-size:17px}
+  .adm .brand svg{width:24px;height:24px}
   .adm .atop .btn2{padding:6px 12px;min-height:34px;font-size:13px}
+  .adm nav.tabs button{padding:6px 12px !important;min-height:34px !important;font-size:13px !important}
   .adm .abody{padding:12px 12px calc(56px + env(safe-area-inset-bottom))}
+  .adm .abody.narrow{padding-top:24px}
   .adm .panel{padding:14px;border-radius:14px}
   .adm .bar2 .btn{width:100%}
-  .adm h2{font-size:20px}
-  .adm .acts>button{flex:1 1 calc(50% - 4px)}
+  .adm h1{font-size:22px}
+  .adm h2{font-size:19px}
+  .adm .acts>button{flex:1 1 calc(50% - 5px)}
   .adm .audit-item{flex-direction:column;align-items:flex-start;gap:6px}
 }
 @media(max-width:360px){.adm .atop .bdg{display:none}.adm .tile b{font-size:26px}}
