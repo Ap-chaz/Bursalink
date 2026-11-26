@@ -37,11 +37,6 @@ export function Footer({lang}){
      'Kenya’s unified student bursary & scholarship portal — connecting secondary, TVET, college, and university learners to verified NG-CDF, county, foundation, and corporate funding across all 47 counties.',
      'Jukwaa la pamoja la bursari na ufadhili wa masomo nchini Kenya — likiwaunganisha wanafunzi wa shule za upili, TVET, vyuo na vyuo vikuu na ufadhili wa NG-CDF, kaunti, wakfu na makampuni katika kaunti zote 47.'
     )}</p>
-    <div className="fbadges">
-     <span>✔ {x('100% Free Application','Ombi Bure 100%')}</span>
-     <span>✔ {x('47 Counties Covered','Kaunti Zote 47')}</span>
-     <span>✔ {x('ODPC Data Protected','Ulinzi wa Data')}</span>
-    </div>
    </div>
 
    <div className="fcol">
