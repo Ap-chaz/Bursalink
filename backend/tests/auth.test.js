@@ -328,4 +328,65 @@ describe('Hardened Email + Password Auth, OTP Verification, Cookies, Lockout & C
     const [rows] = await pool.execute('SELECT id FROM users WHERE email = ?', [temp.email]);
     assert.equal(rows.length, 0);
   });
+
+  test('Legacy passwordless student activates password via Register + OTP without pre-OTP takeover', async () => {
+    const legacyEmail = `legacy_${uid}@example.org`;
+    const legacyPw = 'Legacy#Converted2026!';
+
+    const [ins] = await pool.execute(
+      `INSERT INTO users (email, role, password_hash, email_verified) VALUES (?, 'student', NULL, TRUE)`,
+      [legacyEmail]
+    );
+    await pool.execute(
+      `INSERT INTO profiles (user_id, area, saver_mode, lang, notify_status, notify_deadline, notify_match, docs, details)
+       VALUES (?, NULL, FALSE, 'en', TRUE, TRUE, TRUE, '{}', '{}')`,
+      [ins.insertId]
+    );
+
+    const regRes = await request(app)
+      .post('/api/auth/register')
+      .set(CSRF)
+      .send({ email: legacyEmail, name: 'Legacy Student', password: legacyPw });
+
+    assert.equal(regRes.status, 200);
+    assert.equal(regRes.body.step, 'otp');
+    assert.equal(regRes.body.purpose, 'verify_email');
+    assert.ok(regRes.body.devOtp);
+
+    // Password MUST remain NULL in users until OTP proves inbox ownership
+    const [preRows] = await pool.execute('SELECT password_hash FROM users WHERE id = ?', [ins.insertId]);
+    assert.equal(preRows[0].password_hash, null);
+
+    const preLogin = await request(app)
+      .post('/api/auth/login')
+      .set(CSRF)
+      .send({ email: legacyEmail, password: legacyPw, portal: 'student' });
+    assert.equal(preLogin.status, 401);
+
+    // Resend preserves pending_password_hash on the fresh challenge
+    const resendRes = await request(app)
+      .post('/api/auth/resend-otp')
+      .set(CSRF)
+      .send({ challenge: regRes.body.challenge, purpose: 'verify_email' });
+    assert.equal(resendRes.status, 200);
+    assert.ok(resendRes.body.devOtp);
+    assert.notEqual(resendRes.body.challenge, regRes.body.challenge);
+
+    // Verify OTP activates password and logs student in
+    const verRes = await request(app)
+      .post('/api/auth/verify-otp')
+      .set(CSRF)
+      .send({ challenge: resendRes.body.challenge, code: resendRes.body.devOtp, purpose: 'verify_email' });
+    assert.equal(verRes.status, 200);
+    assert.equal(verRes.body.user.email, legacyEmail);
+    assert.ok(extractCookie(verRes).startsWith('bl_session='));
+
+    // Subsequent password login succeeds
+    const postLogin = await request(app)
+      .post('/api/auth/login')
+      .set(CSRF)
+      .send({ email: legacyEmail, password: legacyPw, portal: 'student' });
+    assert.equal(postLogin.status, 200);
+    assert.equal(postLogin.body.success, true);
+  });
 });

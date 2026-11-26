@@ -1,6 +1,6 @@
 import pool from '../config/db.js';
 import { logAudit } from '../services/auditService.js';
-import { sendOtpEmail } from '../services/emailService.js';
+import { sendOtpEmail, sendExistingAccountNoticeEmail } from '../services/emailService.js';
 import {
   hashPassword, verifyPassword, dummyVerify, needsRehash, validatePassword
 } from '../services/passwordService.js';
@@ -28,8 +28,8 @@ const cookieOptions = (req, maxAgeMs) => ({
 const readSessionCookie = req => req.cookies?.[SESSION_COOKIE()];
 const clearSessionCookie = (req, res) => res.clearCookie(SESSION_COOKIE(), cookieOptions(req));
 
-async function dispatchOtp(req, { email, userId, purpose }) {
-  const { code, challenge } = await issueOtp({ email, userId, purpose });
+async function dispatchOtp(req, { email, userId, purpose, pendingPasswordHash = null }) {
+  const { code, challenge } = await issueOtp({ email, userId, purpose, pendingPasswordHash });
   await logAudit('OTP_REQUEST', { userId, details: { email, purpose }, req });
   // not awaited: response time must not reveal whether an email was really sent
   sendOtpEmail(email, code, purpose).catch(() => {});
@@ -72,14 +72,28 @@ export async function register(req, res, next) {
     const pwError = validatePassword(password, { email });
     if (pwError) return res.status(400).json({ error: pwError });
 
-    const [rows] = await pool.execute('SELECT id, role, email_verified FROM users WHERE email = ? LIMIT 1', [email]);
+    const [rows] = await pool.execute('SELECT id, role, email_verified, password_hash FROM users WHERE email = ? LIMIT 1', [email]);
     const existing = rows[0];
     const hash = await hashPassword(password); // always hashed so timing is identical in every branch
 
-    // Staff accounts are provisioned by an administrator, never through public sign-up. Existing verified
-    // accounts get the exact same reply as a new one so the form cannot be used to discover who is registered.
-    if (adminEmails().includes(email) || (existing && (existing.email_verified || existing.role === 'admin'))) {
-      await logAudit('REGISTER_REJECTED', { details: { email }, req });
+    // Legacy passwordless student account (created before passwords were introduced): stage the password
+    // on the OTP challenge and activate it only after inbox ownership is proven via OTP.
+    if (existing && existing.role === 'student' && existing.email_verified && !existing.password_hash && !adminEmails().includes(email)) {
+      await logAudit('LEGACY_PASSWORD_SETUP_REQUESTED', { userId: existing.id, details: { email }, req });
+      const { code, challenge } = await dispatchOtp(req, {
+        email,
+        userId: existing.id,
+        purpose: 'verify_email',
+        pendingPasswordHash: hash
+      });
+      return res.json(otpStep('verify_email', challenge, code));
+    }
+
+    // Staff accounts and already-registered verified accounts with a password receive the exact same
+    // HTTP response to prevent email enumeration, while Brevo emails sign-in help to the real owner.
+    if (adminEmails().includes(email) || (existing && (existing.role === 'admin' || (existing.email_verified && existing.password_hash)))) {
+      await logAudit('REGISTER_REJECTED', { userId: existing?.id ?? null, details: { email }, req });
+      sendExistingAccountNoticeEmail(email).catch(() => {});
       await pool.execute('SELECT 1');
       return res.json(otpStep('verify_email', fakeChallenge()));
     }
@@ -214,7 +228,21 @@ export async function verifyOtpCode(req, res, next) {
     if (!user) return res.status(400).json({ error: GENERIC_OTP_ERROR });
 
     if (purpose === 'verify_email') {
-      await pool.execute('UPDATE users SET email_verified = TRUE WHERE id = ?', [user.id]);
+      if (result.pendingPasswordHash) {
+        await pool.execute(
+          `UPDATE users
+              SET email_verified = TRUE,
+                  password_hash = ?,
+                  password_changed_at = NOW(),
+                  failed_attempts = 0,
+                  locked_until = NULL
+            WHERE id = ?`,
+          [result.pendingPasswordHash, user.id]
+        );
+        await destroyUserSessions(user.id);
+      } else {
+        await pool.execute('UPDATE users SET email_verified = TRUE WHERE id = ?', [user.id]);
+      }
     }
     await finishLogin(req, res, user);
   } catch (err) {
@@ -228,7 +256,12 @@ export async function resendOtp(req, res, next) {
     if (!['verify_email', 'login'].includes(purpose)) return res.status(400).json({ error: 'Invalid request.' });
     const found = await peekChallenge(challenge, purpose);
     if (!found) return res.json(otpStep(purpose, fakeChallenge()));
-    const { code, challenge: fresh } = await dispatchOtp(req, { email: found.email, userId: found.userId, purpose });
+    const { code, challenge: fresh } = await dispatchOtp(req, {
+      email: found.email,
+      userId: found.userId,
+      purpose,
+      pendingPasswordHash: found.pendingPasswordHash
+    });
     res.json(otpStep(purpose, fresh, code));
   } catch (err) {
     next(err);

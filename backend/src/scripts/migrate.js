@@ -85,6 +85,7 @@ export async function runMigration() {
     await addColumn('otps', 'challenge_hash', 'CHAR(64) NULL');
     await addColumn('otps', 'attempts', 'TINYINT NOT NULL DEFAULT 0');
     await addColumn('otps', 'user_id', 'INT NULL');
+    await addColumn('otps', 'pending_password_hash', 'VARCHAR(255) NULL');
     const [idx] = await connection.query(
       "SELECT 1 FROM information_schema.statistics WHERE table_schema = ? AND table_name = 'otps' AND index_name = 'idx_challenge' LIMIT 1",
       [DB_NAME]

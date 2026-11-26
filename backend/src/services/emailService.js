@@ -103,6 +103,20 @@ export async function sendOtpEmail(email, code, purpose = 'login') {
   return sendBrevoEmail({ to: email, subject, htmlContent, textContent });
 }
 
+export async function sendExistingAccountNoticeEmail(email) {
+  const subject = 'Sign-in help for your BursaLink account';
+  const htmlContent = wrapEmailHtml(
+    subject,
+    `<h2 style="margin:0 0 12px;color:#111;font-size:20px;">You already have a BursaLink account</h2>
+     <p style="margin:0 0 12px;">Someone tried to register on BursaLink using this email address.</p>
+     <p style="margin:0 0 12px;">If this was you, please go back and use <strong>Sign in</strong> with your password, or select <strong>Forgot password</strong> to reset it.</p>
+     <p style="margin:0;color:#6a7178;font-size:13px;">If this was not you, you can safely ignore this email. Your account and password have not changed.</p>`
+  );
+  const textContent =
+    'Someone tried to register on BursaLink using your email address, which already has an account.\n\nIf this was you, use Sign in with your password or click Forgot password to reset it. If not, ignore this email.';
+
+  return sendBrevoEmail({ to: email, subject, htmlContent, textContent });
+}
 
 export async function sendApplicationSubmittedEmail({ email, ref, bursaryTitle }) {
   const subject = `Application ${ref} received – ${bursaryTitle || 'BursaLink'}`;

@@ -149,7 +149,11 @@ function Login({act,err,clearErr,t,mode,setMode}){
  if(stage==='otp'){
   return <form className="card auth" onSubmit={submit}>
    <h1>{purpose==='verify_email'?'Verify your email':'Confirm your sign-in'}</h1>
-   <p className="muted">Enter the 6-digit code sent to <b>{e}</b>.</p>
+   <p className="muted">
+    {purpose==='verify_email'
+     ? <>If this email is new (or setting a password for the first time), enter the 6-digit code sent to <b>{e}</b>. Already have a password? Check your inbox or go back to Sign in / Forgot password.</>
+     : <>Enter the 6-digit code sent to <b>{e}</b>.</>}
+   </p>
    {okMsg&&<p className="ok" role="status">{okMsg}</p>}
    <label htmlFor="cd">6-digit verification code</label>
    <input id="cd" autoComplete="one-time-code" inputMode="numeric" maxLength={6} autoFocus value={code} onChange={x=>setCode(x.target.value.replace(/\D/g,'').slice(0,6))}/>
