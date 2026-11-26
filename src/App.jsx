@@ -53,14 +53,15 @@ export default function App(){
  const act=async fn=>{try{setErr('');await fn();setS(api.load());const updated=await api.syncBursaries();if(Array.isArray(updated))setBursaries([...updated]);return true}catch(e){setErr(e.message);return false}}
  const go=(tb,v=null)=>{setTab(tb);setView(v)}
  const Lang=()=><button className="secondary" style={{width:'auto'}} onClick={()=>act(()=>api.updateProfile({lang:l==='en'?'sw':'en'}))}>{l==='en'?'Kiswahili':'English'}</button>
- const bar=(full,unread=0)=><header className="appbar"><div className="appbarin"><a className="brand" href="#/" onClick={e=>{e.preventDefault();if(!s.user)setIntro(0)}}><Mark/><b>BursaLink</b></a>{full&&<div className="dtabs">{['home','discover','applications','profile'].map(k=><button key={k} className={tab===k?'on':''} onClick={()=>go(k)}>{t(k)}</button>)}</div>}<div className="abr"><Lang/>{full&&<button className="secondary" aria-label={t('notifs')} onClick={()=>go('profile',{v:'notifs'})}>🔔{unread?' '+unread:''}</button>}</div></div></header>
+ const bar=(full,unread=0)=><header className="appbar"><div className="appbarin"><a className="brand" href="#/" onClick={e=>{e.preventDefault();setIntro(0)}}><Mark/><b>BursaLink</b></a>{full&&<div className="dtabs">{['home','discover','applications','profile'].map(k=><button key={k} className={tab===k?'on':''} onClick={()=>go(k)}>{t(k)}</button>)}</div>}<div className="abr"><Lang/>{full&&<button className="secondary" aria-label={t('notifs')} onClick={()=>go('profile',{v:'notifs'})}>🔔{unread?' '+unread:''}</button>}</div></div></header>
  const appFor=id=>s.apps.find(a=>a.bursaryId===id)
  const action=b=>appFor(b.id)?<span className="badge">✔ {t('applied')}</span>:b.status!=='published'||!isOpen(b)?<span className="badge no">{t('closed')}</span>:!placeOk(b,area)?<div><span className="badge no">✖ {t('na')}</span><p className="muted">Only for {b.place.name} residents.</p></div>:<button className="primary" onClick={()=>go('discover',{v:'bursary',id:b.id})}>{t('apply')}</button>
  const Card=b=><div className={'card '+(isOpen(b)&&daysLeft(b)<=3?'urgent':'')} key={b.id}><small>{b.org}</small><h3>{b.title}</h3><p>{b.desc}</p><p>{money(b)} · {where(b)} · {b.levels.join(', ')}</p><p>{isOpen(b)?`${daysLeft(b)} ${t('left')}${daysLeft(b)<=3?' ⚠':''}`:''}</p>
   <div className="row"><div onClick={()=>go('discover',{v:'bursary',id:b.id})}>{action(b)}</div><button className="secondary" onClick={()=>act(()=>api.toggleSave(b.id))}>{s.saved.includes(b.id)?'★ Saved':'☆ Save'}</button></div></div>
  // ---- Auth & onboarding
- if(!s.user)return intro<3?<Site lang={l} toggle={()=>act(()=>api.updateProfile({lang:l==='en'?'sw':'en'}))} start={m=>{setMode(m==='register'?'register':'signin');setIntro(3)}}/>:<div className="app">{bar()}<main className="narrow"><Login {...{act,err,t,mode,setMode}}/></main></div>
- if(!area)return <div className="app">{bar()}<main className="narrow"><AreaForm act={act} err={err} t={t}/></main></div>
+ if(intro<3)return <Site lang={l} toggle={()=>act(()=>api.updateProfile({lang:l==='en'?'sw':'en'}))} start={m=>{setMode(m==='register'?'register':'signin');setIntro(3)}}/>
+ if(!s.user)return <div className="app">{bar()}<main className="narrow"><Login {...{act,err,t,mode,setMode}}/></main></div>
+ if(!area)return <div className="app">{bar()}<main className="narrow"><AreaForm act={act} err={err} t={t} onCancel={()=>setIntro(0)}/></main></div>
  // ---- Screens
  const unread=s.notifs.filter(n=>!n.read).length
  let body
@@ -85,8 +86,8 @@ function Login({act,err,t,mode,setMode}){const reg=mode==='register',[e,setE]=us
   <button className="primary" type="submit" disabled={!sent&&reg&&(!n.trim()||!agree)}>{sent?(reg?'Create account':'Sign in'):'Send my code'}</button>
   {sent&&<button type="button" className="secondary" onClick={()=>setSent(false)}>Use a different email</button>}
   <p className="muted">{reg?'Already have an account?':'New to BursaLink?'} <a href="#" onClick={ev=>{ev.preventDefault();reset(reg?'signin':'register')}}>{reg?'Sign in':'Register'}</a></p><p className="muted">{t('free')}</p></form>}
-function AreaForm({act,err,t}){const [co,setCo]=useState(''),[cn,setCn]=useState(''),[w,setW]=useState(''),[ok,setOk]=useState(false)
- return <div className="card"><h2>Where do you live?</h2><label>County</label><select value={co} onChange={e=>{setCo(e.target.value);setCn('');setW('')}}><option value="">Choose</option>{Object.keys(GEO).map(x=><option key={x}>{x}</option>)}</select>
+function AreaForm({act,err,t,onCancel}){const [co,setCo]=useState(''),[cn,setCn]=useState(''),[w,setW]=useState(''),[ok,setOk]=useState(false)
+ return <div className="card">{onCancel&&<button type="button" className="secondary" style={{width:'auto',marginBottom:'14px',fontSize:'13px',padding:'6px 14px'}} onClick={onCancel}>← Back to Homepage</button>}<h2>Where do you live?</h2><label>County</label><select value={co} onChange={e=>{setCo(e.target.value);setCn('');setW('')}}><option value="">Choose</option>{Object.keys(GEO).map(x=><option key={x}>{x}</option>)}</select>
  <label>Constituency</label><select value={cn} disabled={!co} onChange={e=>{setCn(e.target.value);setW('')}}><option value="">Choose</option>{co&&Object.keys(GEO[co]).map(x=><option key={x}>{x}</option>)}</select>
  <label>Ward</label><select value={w} disabled={!cn} onChange={e=>setW(e.target.value)}><option value="">Choose</option>{cn&&GEO[co][cn].map(x=><option key={x}>{x}</option>)}</select>
  <p><b>⚠ {t('lock')}</b></p><label className="check"><input type="checkbox" checked={ok} onChange={e=>setOk(e.target.checked)}/> {t('confirm')}</label>
