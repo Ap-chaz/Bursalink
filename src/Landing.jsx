@@ -346,10 +346,6 @@ export default function Landing({lang,toggle,start}){
     <div className="opps-grid">
      {filteredOpps.map((opp, idx)=>(
       <article className="opp-card" key={idx}>
-       <div className="opp-top">
-        <span className="opp-type-badge">{opp.type}</span>
-        <span className="opp-amount-badge">{opp.amount}</span>
-       </div>
        <div className="opp-content">
         <div className="opp-icon"><Ic n={opp.icon} s={24}/></div>
         <div>
@@ -359,7 +355,6 @@ export default function Landing({lang,toggle,start}){
        </div>
        <p className="opp-desc">{opp.desc}</p>
        <div className="opp-footer">
-        <span className="opp-verified">✔ {x('Verified Fund','Mfuko Halisi')}</span>
         <button className="opp-apply-btn" onClick={()=>start('register')}>{x('Check Eligibility →','Angalia Ustahiki →')}</button>
        </div>
       </article>
