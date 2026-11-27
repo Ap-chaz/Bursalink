@@ -631,6 +631,31 @@ function Applications({ apps, bump }) {
             </p>
           ))}
 
+          <h3>Applicant Documents</h3>
+          {a.applicant_docs && Object.keys(a.applicant_docs).length > 0 ? (
+            <div style={{ display: 'grid', gap: '8px', marginBottom: '16px' }}>
+              {Object.entries(a.applicant_docs).map(([docName, docData]) => (
+                <div key={docName} style={{ background: '#f8fafc', padding: '10px 14px', borderRadius: '8px', border: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
+                  <div>
+                    <b>{docName}</b>
+                    <span className="muted" style={{ marginLeft: '8px', fontSize: '13px' }}>
+                      {docData?.name || 'Uploaded file'} {docData?.size ? `(${(docData.size / 1024).toFixed(0)} KB)` : ''}
+                    </span>
+                  </div>
+                  {docData?.url ? (
+                    <a href={docData.url} target="_blank" rel="noopener noreferrer" className="btn2" style={{ textDecoration: 'none', display: 'inline-block', padding: '4px 10px', fontSize: '13px' }}>
+                      Open Document ↗
+                    </a>
+                  ) : (
+                    <span className="muted" style={{ fontSize: '13px' }}>Uploaded</span>
+                  )}
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="muted" style={{ marginBottom: '16px' }}>No attached documents found for this applicant.</p>
+          )}
+
           {done ? (
             <p className="muted" style={{ marginTop: '16px' }}>
               This application has a final status ({lab(a.status)}) and can no longer be updated.

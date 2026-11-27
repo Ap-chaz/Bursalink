@@ -246,11 +246,18 @@ function Details({b,s,t,act,go,action,err}){const [applying,setApplying]=useStat
  <p><b>Documents:</b> {b.docs.join(', ')}</p><p><b>How it is decided:</b> {b.how}</p><p><b>Contact:</b> {b.contact}</p><p><b>Terms:</b> One application each. Providing false information can disqualify you.</p>
  <div className="card"><b>{t('prelim')}</b><p>✔ {t('meets')}: {e.meets.map(k=>nm[k]).join(', ')||'—'}</p><p>✖ {t('notm')}: {e.not.map(k=>nm[k]).join(', ')||'—'}</p><p>? {t('miss')}: {e.missing.map(k=>nm[k.split(':')[0]]||k.replace('doc:','')).join(', ')||'—'}</p></div>
  {a?action(b):isOpen(b)&&placeOk(b,s.profile.area)?<><button className="primary" onClick={()=>setApplying(true)}>{t('apply')}</button><p>{t('free')}</p></>:action(b)}</>}
-function Apply({b,s,t,act,close}){const d=s.drafts[b.id]||{step:1,a:{}},[step,setStep]=useState(d.step),[a,setA]=useState(d.a),[ok,setOk]=useState(false),[done,setDone]=useState(null),[ferr,setFerr]=useState({})
+function Apply({b,s,t,act,close}){const d=s.drafts[b.id]||{step:1,a:{}},[step,setStep]=useState(d.step),[a,setA]=useState(d.a),[ok,setOk]=useState(false),[done,setDone]=useState(null),[ferr,setFerr]=useState({}),[uploading,setUploading]=useState({})
  const set=(k,v)=>{const n={...a,[k]:v};setA(n);api.saveDraft(b.id,{step,a:n})} // autosave
  const to=n=>{setStep(n);api.saveDraft(b.id,{step:n,a})}
  const file=async(doc,f)=>{const bad=validateFile(f);if(bad)return setFerr({...ferr,[doc]:bad==='type'?'Needs a new file: use PDF, JPG or PNG.':'Too big. Maximum 5 MB.'})
-  setFerr({...ferr,[doc]:null});const out=s.profile.saver?f:await compress(f);await act(()=>api.updateProfile({docs:{...s.profile.docs,[doc]:{name:out.name,size:out.size}}}))}
+  setFerr({...ferr,[doc]:null});setUploading(prev=>({...prev,[doc]:true}))
+  try{
+   const out=s.profile.saver?f:await compress(f);
+   const res=await api.uploadDocument(out);
+   await act(()=>api.updateProfile({docs:{...s.profile.docs,[doc]:{name:out.name,size:out.size,url:res.file?.url,publicId:res.file?.publicId,format:res.file?.format}}}))
+  }catch(x){setFerr(prev=>({...prev,[doc]:x.message||'Upload failed. Please try again.'}))}
+  finally{setUploading(prev=>({...prev,[doc]:false}))}
+ }
  if(done)return <div className="card"><h2>✔ Submitted</h2><p>Your reference: <b>{done}</b></p><p>What happens next: the provider reviews your application. We will tell you here when anything changes.</p><button className="primary" onClick={close}>Done</button></div>
  const Field=(k,label,extra)=><><label>{label}</label><input value={a[k]||''} onChange={e=>set(k,e.target.value)} {...extra}/></>
  return <div><button className="secondary" onClick={close}>← {t('back')}</button><h2>{b.title}</h2><p className="muted">{step<4?`Step ${step} of 3`:'Review'}</p><div className="bar"><i style={{width:Math.min(step,3)*33+'%'}}/></div><p>{t('free')}</p>
@@ -258,7 +265,7 @@ function Apply({b,s,t,act,close}){const d=s.drafts[b.id]||{step:1,a:{}},[step,se
  {step===2&&<><label>Household income (we ask so reviewers understand need. It never decides alone.)</label><select value={a.income||''} onChange={e=>set('income',e.target.value)}><option value="">Prefer not to say</option><option>Low</option><option>Middle</option><option>Higher</option></select>
   <label>Are you an orphan? (This helps reviewers understand your situation.)</label><select value={a.orphan||''} onChange={e=>set('orphan',e.target.value)}><option value="">Prefer not to say</option><option>Yes</option><option>No</option></select>
   <label>{b.q}</label><textarea rows="4" value={a.why||''} onChange={e=>set('why',e.target.value)}/></>}
- {step===3&&<><p>{t('types')}</p>{b.docs.map(doc=>{const f=s.profile.docs[doc];return <div className="card" key={doc}><b>{doc}</b> <span className="badge">{f?'✔ Uploaded: '+f.name:'Required'}</span>{ferr[doc]&&<p className="err">{ferr[doc]}</p>}<input type="file" accept="application/pdf,image/jpeg,image/png" capture={undefined} onChange={e=>e.target.files[0]&&file(doc,e.target.files[0])}/><small>{f?'Reused across applications. Replace any time before a decision.':'Camera, gallery or PDF'}</small></div>})}</>}
+ {step===3&&<><p>{t('types')}</p>{b.docs.map(doc=>{const f=s.profile.docs[doc],isUp=uploading[doc];return <div className="card" key={doc}><b>{doc}</b> <span className="badge">{isUp?'⏳ Uploading to Cloudinary...':f?'✔ Uploaded: '+f.name:'Required'}</span>{f?.url&&<p style={{margin:'6px 0'}}><a href={f.url} target="_blank" rel="noopener noreferrer">View uploaded document ↗</a></p>}{ferr[doc]&&<p className="err">{ferr[doc]}</p>}<input type="file" disabled={isUp} accept="application/pdf,image/jpeg,image/png" capture={undefined} onChange={e=>e.target.files[0]&&file(doc,e.target.files[0])}/><small>{f?'Stored securely on Cloudinary. Reused across applications. Replace any time before a decision.':'Camera, gallery or PDF (max 5 MB)'}</small></div>})}</>}
  {step===4&&<div className="card"><h3>Review</h3>{[['School',a.school,1],['Year',a.year,1],['Income',a.income,2],['Why',a.why,2]].map(([k,v,n])=><p key={k}>{k}: {v||'—'} <a href="#" onClick={e=>{e.preventDefault();to(n)}}>Edit</a></p>)}<p>Documents: {b.docs.filter(x=>s.profile.docs[x]).length}/{b.docs.length} <a href="#" onClick={e=>{e.preventDefault();to(3)}}>Edit</a></p>
   <label className="check"><input type="checkbox" checked={ok} onChange={e=>setOk(e.target.checked)}/> {t('decl')}</label></div>}
  <div className="row">{step>1&&<button className="secondary" onClick={()=>to(step-1)}>{t('back')}</button>}{step<4?<button className="primary" disabled={step===1&&!(a.school&&a.year)} onClick={()=>to(step+1)}>{t('cont')}</button>:<button className="primary" disabled={!ok||b.docs.some(x=>!s.profile.docs[x])} onClick={async()=>{if(await act(()=>api.submitApplication(b.id,a)))setDone(api.load().apps.at(-1).ref)}}>{t('submit')}</button>}</div></div>}
@@ -280,9 +287,20 @@ function Profile({s,t,act,go,err,home}){const p=s.profile,pick=q=>({name:q.name|
  const [d,setD]=useState(()=>pick(p)),[saved,setSaved]=useState(false),[req,setReq]=useState(false),[area,setArea]=useState(''),[why,setWhy]=useState('')
  const [curPw,setCurPw]=useState(''),[newPw,setNewPw]=useState(''),[newPw2,setNewPw2]=useState(''),[pwBusy,setPwBusy]=useState(false),[pwErr,setPwErr]=useState(''),[pwOk,setPwOk]=useState('')
  const [delOpen,setDelOpen]=useState(false),[delPw,setDelPw]=useState(''),[delBusy,setDelBusy]=useState(false),[delErr,setDelErr]=useState('')
+ const [docUp,setDocUp]=useState({}),[docErr,setDocErr]=useState({})
  const dirty=JSON.stringify(d)!==JSON.stringify(pick(p)),pct=completion(d),ch=patch=>{setD({...d,...patch});setSaved(false)}
  const F=(k,label,extra={})=><><label htmlFor={'f-'+k}>{label}</label><input id={'f-'+k} value={d[k]} onChange={e=>ch({[k]:e.target.value})} {...extra}/></>
  const save=async ev=>{ev.preventDefault();if(await act(()=>api.updateProfile(d)))setSaved(true)}
+ const uploadDoc=async(doc,f)=>{
+  const bad=validateFile(f);if(bad)return setDocErr({...docErr,[doc]:bad==='type'?'Needs a new file: use PDF, JPG or PNG.':'Too big. Maximum 5 MB.'})
+  setDocErr({...docErr,[doc]:null});setDocUp(prev=>({...prev,[doc]:true}))
+  try{
+   const out=d.saver?f:await compress(f);
+   const res=await api.uploadDocument(out);
+   await act(()=>api.updateProfile({docs:{...s.profile.docs,[doc]:{name:out.name,size:out.size,url:res.file?.url,publicId:res.file?.publicId,format:res.file?.format}}}))
+  }catch(x){setDocErr(prev=>({...prev,[doc]:x.message||'Upload failed.'}))}
+  finally{setDocUp(prev=>({...prev,[doc]:false}))}
+ }
  const submitPw=async ev=>{
   ev.preventDefault();setPwErr('');setPwOk('')
   if(newPw!==newPw2){setPwErr('New passwords do not match.');return}
@@ -309,6 +327,23 @@ function Profile({s,t,act,go,err,home}){const p=s.profile,pick=q=>({name:q.name|
  {['status','deadline','match'].map(k=><label key={k} className="check"><input type="checkbox" checked={d.notify[k]} onChange={e=>ch({notify:{...d.notify,[k]:e.target.checked}})}/> Notify me: {k}</label>)}
  <button className="primary" type="submit" disabled={!dirty}>Save profile</button>{dirty&&<p className="muted">You have unsaved changes.</p>}
  {saved&&!dirty&&<div className="card accent" role="status"><b>Profile saved.</b>{pct===100?<><p>Your profile is complete. You are ready to apply.</p><button type="button" className="primary" onClick={()=>go('discover')}>Find bursaries</button></>:<p>Your profile is {pct}% complete. Fill in the rest to apply faster.</p>}</div>}</form>
+
+ <div className="card">
+  <b>My Application Documents</b>
+  <p className="muted" style={{marginTop:'4px',marginBottom:'12px'}}>Documents stored securely on Cloudinary and automatically attached when applying for bursaries.</p>
+  {['National ID or birth certificate','School fee statement',...Object.keys(s.profile.docs||{}).filter(k=>!['National ID or birth certificate','School fee statement'].includes(k))].map(doc=>{
+   const f=(s.profile.docs||{})[doc],isUp=docUp[doc];
+   return <div key={doc} style={{borderTop:'1px solid #e6e8eb',paddingTop:'10px',marginTop:'10px'}}>
+    <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',flexWrap:'wrap',gap:'6px'}}>
+     <b>{doc}</b>
+     <span className="badge">{isUp?'⏳ Uploading to Cloudinary...':f?'✔ Uploaded: '+f.name:'Not uploaded'}</span>
+    </div>
+    {f?.url&&<p style={{margin:'6px 0'}}><a href={f.url} target="_blank" rel="noopener noreferrer">View uploaded document ↗</a></p>}
+    {docErr[doc]&&<p className="err">{docErr[doc]}</p>}
+    <input type="file" disabled={isUp} accept="application/pdf,image/jpeg,image/png" onChange={e=>e.target.files[0]&&uploadDoc(doc,e.target.files[0])}/>
+   </div>
+  })}
+ </div>
 
  <form className="card" onSubmit={submitPw}>
   <b>Password & Security</b>

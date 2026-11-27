@@ -325,16 +325,21 @@ export async function trackApplicationPublic(req, res, next) {
 export async function adminListApplications(req, res, next) {
   try {
     const [rows] = await pool.execute(`
-      SELECT a.*, u.email as applicant_email, b.title as bursary_title, b.org as bursary_org
+      SELECT a.*, u.email as applicant_email, b.title as bursary_title, b.org as bursary_org,
+             p.docs as applicant_docs
       FROM applications a
       JOIN users u ON a.user_id = u.id
       JOIN bursaries b ON a.bursary_id = b.id
+      LEFT JOIN profiles p ON a.user_id = p.user_id
       ORDER BY a.created_at DESC
     `);
 
     const apps = rows.map(r => ({
       ...r,
-      answers: typeof r.answers === 'string' ? JSON.parse(r.answers) : r.answers
+      answers: typeof r.answers === 'string' ? JSON.parse(r.answers) : r.answers,
+      applicant_docs: typeof r.applicant_docs === 'string'
+        ? JSON.parse(r.applicant_docs)
+        : (r.applicant_docs || {})
     }));
 
     res.json(apps);

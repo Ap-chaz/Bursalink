@@ -235,6 +235,34 @@ export const updateProfile = async patch => {
   });
 };
 
+export const uploadDocument = async file => {
+  const formData = new FormData();
+  formData.append('file', file);
+
+  const response = await fetch(`${API_BASE}/upload/doc`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: {
+      'X-Requested-With': 'bursalink',
+      'ngrok-skip-browser-warning': 'true'
+    },
+    body: formData
+  });
+
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(data.error || 'Document upload failed');
+  }
+  return data;
+};
+
+export const deleteUploadedDocument = async publicId => {
+  return await req('/upload', {
+    method: 'DELETE',
+    body: JSON.stringify({ publicId })
+  });
+};
+
 export const registerArea = async area => {
   await req('/profile/area', {
     method: 'POST',

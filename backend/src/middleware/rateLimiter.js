@@ -84,3 +84,10 @@ export const trackLimiter = rateLimit({
   max: isProd ? 60 : 500,
   message: { error: 'Too many tracking requests. Please wait a few minutes and try again.' }
 });
+
+export const uploadLimiter = rateLimit({
+  ...base,
+  windowMs: 15 * 60 * 1000,
+  max: isProd ? 30 : 300,
+  message: { error: 'Upload limit reached. Please wait a few minutes before uploading more documents.' }
+});
