@@ -35,4 +35,4 @@ export const adminEmails = () =>
     .map(e => e.trim().toLowerCase())
     .filter(Boolean);
 
-export const SESSION_COOKIE = () => (isProd() ? '__Host-bl_session' : 'bl_session');
+export const SESSION_COOKIE = () => process.env.SESSION_COOKIE_NAME || (isProd() ? 'bl_session' : 'bl_session');

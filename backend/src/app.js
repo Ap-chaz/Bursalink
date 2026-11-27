@@ -25,9 +25,17 @@ const allowedOrigins = process.env.ALLOWED_ORIGINS
   ? process.env.ALLOWED_ORIGINS.split(',').map(o => o.trim())
   : ['http://localhost:5173', 'http://localhost:3000', 'http://127.0.0.1:5173'];
 
+const isOriginAllowed = origin => {
+  if (!origin) return true;
+  if (allowedOrigins.includes(origin)) return true;
+  if (origin.endsWith('.vercel.app') || origin.endsWith('.railway.app')) return true;
+  if (process.env.NODE_ENV !== 'production') return true;
+  return false;
+};
+
 app.use(cors({
   origin: (origin, callback) => {
-    if (!origin || allowedOrigins.includes(origin) || process.env.NODE_ENV !== 'production') {
+    if (isOriginAllowed(origin)) {
       callback(null, true);
     } else {
       callback(new Error('Blocked by CORS policy'));
@@ -47,7 +55,7 @@ app.use(cookieParser());
 
 // 4. Rate Limiting + CSRF protection for all API endpoints
 app.use('/api', globalLimiter);
-app.use('/api', csrfProtection(allowedOrigins));
+app.use('/api', csrfProtection(allowedOrigins, isOriginAllowed));
 
 // 5. Root & Health Check - Strictly Minimal (Zero Information Disclosure)
 app.get('/', (req, res) => {

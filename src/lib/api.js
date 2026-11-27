@@ -1,7 +1,10 @@
 import { BURSARIES as DEFAULT_BURSARIES } from './data.js';
 
 const K = 'bursalink';
-const API_BASE = '/api';
+const RAW_API_URL = typeof import.meta !== 'undefined' && import.meta.env?.VITE_API_URL ? import.meta.env.VITE_API_URL.trim() : '';
+const API_BASE = RAW_API_URL
+  ? (RAW_API_URL.endsWith('/api') ? RAW_API_URL.replace(/\/+$/, '') : `${RAW_API_URL.replace(/\/+$/, '')}/api`)
+  : '/api';
 
 const blank = {
   user: null,

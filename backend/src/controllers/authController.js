@@ -18,13 +18,17 @@ const validEmail = e => e.length > 0 && e.length <= 254 && EMAIL_REGEX.test(e);
 const exposeOtp = () => process.env.AUTH_EXPOSE_OTP === 'true' && !isProd();
 
 // ---------- session cookie helpers ----------
-const cookieOptions = (req, maxAgeMs) => ({
-  httpOnly: true,                       // invisible to JavaScript (XSS cannot steal it)
-  secure: isProd() || req.secure,       // HTTPS only in production
-  sameSite: 'strict',                   // never sent on cross-site requests (CSRF defence)
-  path: '/',
-  ...(maxAgeMs ? { maxAge: maxAgeMs } : {})
-});
+const cookieOptions = (req, maxAgeMs) => {
+  const isSecure = isProd() || req.secure || req.headers['x-forwarded-proto'] === 'https';
+  const sameSite = process.env.COOKIE_SAME_SITE || (isProd() ? 'none' : 'strict');
+  return {
+    httpOnly: true,                       // invisible to JavaScript (XSS cannot steal it)
+    secure: sameSite === 'none' ? true : isSecure, // HTTPS required for sameSite=none
+    sameSite,                             // 'none' for cross-site Vercel <-> Railway, 'strict' in test/dev
+    path: '/',
+    ...(maxAgeMs ? { maxAge: maxAgeMs } : {})
+  };
+};
 const readSessionCookie = req => req.cookies?.[SESSION_COOKIE()];
 const clearSessionCookie = (req, res) => res.clearCookie(SESSION_COOKIE(), cookieOptions(req));
 

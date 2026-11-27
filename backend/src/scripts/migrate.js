@@ -3,27 +3,52 @@ import dotenv from 'dotenv';
 
 dotenv.config();
 
-const {
-  DB_HOST = 'localhost',
-  DB_PORT = 3307,
-  DB_USER = 'root',
-  DB_PASSWORD = '',
-  DB_NAME = 'bursalink_db'
-} = process.env;
+function getConnectionConfig() {
+  const url = process.env.MYSQL_URL || process.env.DATABASE_URL;
+  if (url) {
+    try {
+      const parsed = new URL(url);
+      const dbName = parsed.pathname.replace(/^\//, '') || 'railway';
+      return {
+        connectionConfig: { uri: url },
+        dbName,
+        display: `${parsed.username}@${parsed.host}/${dbName}`
+      };
+    } catch {
+      return {
+        connectionConfig: { uri: url },
+        dbName: process.env.MYSQLDATABASE || process.env.DB_NAME || 'bursalink_db',
+        display: 'remote-database'
+      };
+    }
+  }
+
+  const host = process.env.MYSQLHOST || process.env.DB_HOST || 'localhost';
+  const port = parseInt(process.env.MYSQLPORT || process.env.DB_PORT || '3306', 10);
+  const user = process.env.MYSQLUSER || process.env.DB_USER || 'root';
+  const password = process.env.MYSQLPASSWORD !== undefined ? process.env.MYSQLPASSWORD : (process.env.DB_PASSWORD || '');
+  const dbName = process.env.MYSQLDATABASE || process.env.DB_NAME || 'bursalink_db';
+
+  return {
+    connectionConfig: { host, port, user, password },
+    dbName,
+    display: `${user}@${host}:${port}/${dbName}`
+  };
+}
 
 export async function runMigration() {
-  console.log(`Connecting to MySQL on ${DB_HOST}:${DB_PORT} as ${DB_USER}...`);
-  const connection = await mysql.createConnection({
-    host: DB_HOST,
-    port: parseInt(DB_PORT, 10),
-    user: DB_USER,
-    password: DB_PASSWORD
-  });
+  const { connectionConfig, dbName, display } = getConnectionConfig();
+  console.log(`Connecting to MySQL on ${display}...`);
+  const connection = await mysql.createConnection(connectionConfig);
 
   try {
-    console.log(`Creating database '${DB_NAME}' if not exists...`);
-    await connection.query(`CREATE DATABASE IF NOT EXISTS \`${DB_NAME}\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;`);
-    await connection.query(`USE \`${DB_NAME}\`;`);
+    try {
+      console.log(`Creating database '${dbName}' if not exists...`);
+      await connection.query(`CREATE DATABASE IF NOT EXISTS \`${dbName}\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;`);
+    } catch (dbErr) {
+      console.log(`Note: CREATE DATABASE skipped (${dbErr.message}) - continuing with '${dbName}'`);
+    }
+    await connection.query(`USE \`${dbName}\`;`);
 
     console.log('Creating tables...');
 
@@ -246,6 +271,26 @@ export async function runMigration() {
     `);
 
     console.log('✅ All tables successfully created or verified.');
+
+    // Auto-seed initial bursaries if table is empty
+    const [bursaryRows] = await connection.query('SELECT COUNT(*) as cnt FROM bursaries');
+    if (bursaryRows[0]?.cnt === 0) {
+      console.log('Seeding initial verified bursaries...');
+      const { sampleBursaries } = await import('./seed.js');
+      for (const b of sampleBursaries) {
+        await connection.query(
+          `INSERT INTO bursaries (id, title, org, type, place, min, max, levels, opens, closes, status, docs, \`desc\`, how, contact, q)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+           ON DUPLICATE KEY UPDATE title=VALUES(title)`,
+          [
+            b.id, b.title, b.org, b.type, b.place ? JSON.stringify(b.place) : null,
+            b.min, b.max, JSON.stringify(b.levels), b.opens, b.closes, b.status,
+            JSON.stringify(b.docs), b.desc, b.how, b.contact, b.q
+          ]
+        );
+      }
+      console.log('✅ Initial bursaries populated.');
+    }
   } finally {
     await connection.end();
   }

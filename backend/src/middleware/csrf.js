@@ -4,7 +4,7 @@
 //  2. in production the Origin header (when present) must be one of our own origins.
 const SAFE = new Set(['GET', 'HEAD', 'OPTIONS']);
 
-export function csrfProtection(allowedOrigins) {
+export function csrfProtection(allowedOrigins, isOriginAllowed) {
   return (req, res, next) => {
     if (SAFE.has(req.method)) return next();
 
@@ -13,8 +13,13 @@ export function csrfProtection(allowedOrigins) {
     }
 
     const origin = req.get('origin');
-    if (process.env.NODE_ENV === 'production' && origin && !allowedOrigins.includes(origin)) {
-      return res.status(403).json({ error: 'Request blocked' });
+    if (process.env.NODE_ENV === 'production' && origin) {
+      const allowed = typeof isOriginAllowed === 'function'
+        ? isOriginAllowed(origin)
+        : (allowedOrigins.includes(origin) || origin.endsWith('.vercel.app') || origin.endsWith('.railway.app'));
+      if (!allowed) {
+        return res.status(403).json({ error: 'Request blocked' });
+      }
     }
     next();
   };
