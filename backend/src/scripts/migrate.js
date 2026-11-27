@@ -291,6 +291,30 @@ export async function runMigration() {
       }
       console.log('✅ Initial bursaries populated.');
     }
+
+    // Auto-provision initial administrator if configured
+    if (process.env.ADMIN_EMAIL && process.env.ADMIN_PASSWORD) {
+      try {
+        const email = process.env.ADMIN_EMAIL.trim().toLowerCase();
+        const { hashPassword } = await import('../services/passwordService.js');
+        const hash = await hashPassword(process.env.ADMIN_PASSWORD);
+        const [admRows] = await connection.query('SELECT id FROM users WHERE email = ? LIMIT 1', [email]);
+        if (admRows.length > 0) {
+          await connection.query(
+            `UPDATE users SET role = 'admin', password_hash = ?, email_verified = TRUE, failed_attempts = 0, locked_until = NULL WHERE id = ?`,
+            [hash, admRows[0].id]
+          );
+        } else {
+          await connection.query(
+            `INSERT INTO users (email, role, password_hash, email_verified) VALUES (?, 'admin', ?, TRUE)`,
+            [email, hash]
+          );
+        }
+        console.log(`✅ Admin account configured for ${email}`);
+      } catch (adminErr) {
+        console.warn(`Admin auto-provision note: ${adminErr.message}`);
+      }
+    }
   } finally {
     await connection.end();
   }
