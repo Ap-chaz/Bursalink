@@ -83,7 +83,7 @@ export async function runMigration() {
     const hasColumn = async (table, column) => {
       const [rows] = await connection.query(
         'SELECT 1 FROM information_schema.columns WHERE table_schema = ? AND table_name = ? AND column_name = ? LIMIT 1',
-        [DB_NAME, table, column]
+        [dbName, table, column]
       );
       return rows.length > 0;
     };
@@ -113,7 +113,7 @@ export async function runMigration() {
     await addColumn('otps', 'pending_password_hash', 'VARCHAR(255) NULL');
     const [idx] = await connection.query(
       "SELECT 1 FROM information_schema.statistics WHERE table_schema = ? AND table_name = 'otps' AND index_name = 'idx_challenge' LIMIT 1",
-      [DB_NAME]
+      [dbName]
     );
     if (!idx.length) await connection.query('CREATE INDEX idx_challenge ON otps (challenge_hash)');
     // legacy unkeyed-SHA256 codes are no longer valid under the new scheme
